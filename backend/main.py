@@ -10,6 +10,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from database import engine, Base, SessionLocal
 import models  # noqa: F401
 from routers import campaigns, tracking, analytics, templates, settings, ai as ai_router, auth as auth_router
+from routers import risk as risk_router
+from routers import approvals as approvals_router
+from routers import threat_intel as threat_intel_router
+from routers import autonomy as autonomy_router
+from routers import compliance as compliance_router
 
 # ── Structured logging (CVE-16 fix) ──────────────────────────────────────────
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -63,6 +68,20 @@ def _migrate_db():
         "ALTER TABLE targets ADD COLUMN send_failed BOOLEAN DEFAULT 0",
         "ALTER TABLE targets ADD COLUMN send_error VARCHAR DEFAULT ''",
         "ALTER TABLE tracking_events ADD COLUMN event_category VARCHAR DEFAULT 'behavioral'",
+        # Risk engine tables are created by SQLAlchemy Base.metadata.create_all()
+        # These are safety-net column additions for any manual DB edits
+        "ALTER TABLE employee_risk_scores ADD COLUMN gateway_points REAL DEFAULT 0.0",
+        "ALTER TABLE employee_risk_scores ADD COLUMN breach_points REAL DEFAULT 0.0",
+        "ALTER TABLE employee_risk_scores ADD COLUMN last_breach_check DATETIME",
+        # Approval workflow tables (created by SQLAlchemy, these are safety-net additions)
+        "ALTER TABLE campaign_approvals ADD COLUMN approver_name VARCHAR DEFAULT ''",
+        "ALTER TABLE approval_config ADD COLUMN updated_at DATETIME",
+        # Audit log & notification tables
+        "ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR DEFAULT ''",
+        "ALTER TABLE notification_config ADD COLUMN updated_at DATETIME",
+        # Template difficulty (Phase 3)
+        "ALTER TABLE email_templates ADD COLUMN difficulty INTEGER DEFAULT 2",
+        # Phase 3-5 tables are created by SQLAlchemy Base.metadata.create_all()
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -204,7 +223,98 @@ try:
     _SCHEDULER_AVAILABLE = True
     restore_scheduled_jobs()
     scheduler.add_job(_session_cleanup_job, trigger="interval", hours=1, id="session_cleanup")
-    log.info("APScheduler started.")
+
+    # ── Risk Engine scheduled jobs ────────────────────────────────────────────
+    def _risk_decay_job():
+        db = SessionLocal()
+        try:
+            from risk_engine import core as risk_core
+            affected = risk_core.apply_decay(db)
+            log.info(f"Risk decay job: {affected} employees updated")
+        except Exception as e:
+            log.error(f"Risk decay job error: {e}")
+        finally:
+            db.close()
+
+    def _gateway_sync_job():
+        db = SessionLocal()
+        try:
+            from risk_engine import gateway_sync
+            result = gateway_sync.run_gateway_sync(db)
+            log.info(f"Gateway sync job: {result}")
+        except Exception as e:
+            log.error(f"Gateway sync job error: {e}")
+        finally:
+            db.close()
+
+    def _breach_scan_job():
+        db = SessionLocal()
+        try:
+            from risk_engine import breach_monitor
+            result = breach_monitor.run_full_scan(db)
+            log.info(f"Breach scan job: {result}")
+        except Exception as e:
+            log.error(f"Breach scan job error: {e}")
+        finally:
+            db.close()
+
+    scheduler.add_job(_risk_decay_job,   trigger="interval", days=1,   id="risk_decay")
+    scheduler.add_job(_gateway_sync_job, trigger="interval", hours=1,  id="gateway_sync")
+    scheduler.add_job(_breach_scan_job,  trigger="interval", days=7,   id="breach_scan")
+
+    # ── Threat Intel + Autonomy Engine jobs ───────────────────────────────────
+    def _threat_intel_sync_job():
+        db = SessionLocal()
+        try:
+            from threat_intel.feeds import run_feed_sync
+            result = run_feed_sync(db)
+            log.info(f"Threat intel sync job: {result}")
+        except Exception as e:
+            log.error(f"Threat intel sync job error: {e}")
+        finally:
+            db.close()
+
+    def _autonomy_cycle_job():
+        db = SessionLocal()
+        try:
+            from autonomy.engine import run_autonomy_cycle
+            result = run_autonomy_cycle(db)
+            log.info(f"Autonomy cycle job: {result}")
+        except Exception as e:
+            log.error(f"Autonomy cycle job error: {e}")
+        finally:
+            db.close()
+
+    def _leaderboard_refresh_job():
+        db = SessionLocal()
+        try:
+            from autonomy.engine import refresh_leaderboard
+            count = refresh_leaderboard(db)
+            log.info(f"Leaderboard refreshed: {count} entries")
+        except Exception as e:
+            log.error(f"Leaderboard refresh job error: {e}")
+        finally:
+            db.close()
+
+    scheduler.add_job(_threat_intel_sync_job,  trigger="interval", hours=6,    id="threat_intel_sync")
+    scheduler.add_job(_autonomy_cycle_job,     trigger="interval", hours=24,   id="autonomy_cycle")
+    scheduler.add_job(_leaderboard_refresh_job,trigger="cron",     day=1, hour=3, id="leaderboard_refresh")
+
+    # Start syslog listener if gateway is configured for syslog
+    def _maybe_start_syslog():
+        db = SessionLocal()
+        try:
+            cfg = db.query(models.GatewayConfig).first()
+            if cfg and cfg.enabled and cfg.gateway_type == "syslog":
+                from risk_engine.gateway_adapters.syslog_listener import start_listener
+                start_listener(cfg.syslog_port or 5140)
+        except Exception as e:
+            log.warning(f"Syslog listener startup skipped: {e}")
+        finally:
+            db.close()
+    _maybe_start_syslog()
+
+    log.info("APScheduler started with risk engine jobs.")
 except ImportError:
     log.warning("apscheduler not installed — scheduling disabled.")
 
@@ -247,6 +357,11 @@ app.include_router(analytics.router)
 app.include_router(templates.router)
 app.include_router(settings.router)
 app.include_router(ai_router.router)
+app.include_router(risk_router.router)
+app.include_router(approvals_router.router)
+app.include_router(threat_intel_router.router)
+app.include_router(autonomy_router.router)
+app.include_router(compliance_router.router)
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["health"])

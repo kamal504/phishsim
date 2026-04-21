@@ -10,6 +10,7 @@ Security: bot/scanner user-agents are detected and filtered (CVE-22 fix).
 Known email security scanners (Defender, Proofpoint, Mimecast, etc.) pre-click
 links before humans see them — filtering them prevents inflated click/open stats.
 """
+import logging
 import re
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, HTMLResponse
@@ -17,7 +18,28 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["tracking"])
+
+
+def _fire_simulation_signal(target: models.Target, signal_type: str, db: Session):
+    """
+    Record a simulation risk signal after a tracking event.
+    Silently skips if the risk engine fails — tracking must not be disrupted.
+    """
+    try:
+        from risk_engine import core as risk_core
+        risk_core.record_signal(
+            email=target.email,
+            signal_type=signal_type,
+            source="phishsim",
+            db=db,
+            metadata={"target_id": target.id, "campaign_id": target.campaign_id},
+            name=target.name or "",
+            department=target.department or "",
+        )
+    except Exception as e:
+        log.warning(f"Risk signal failed (non-critical): {e}")
 
 # ── Bot/scanner user-agent filter (CVE-22 fix) ───────────────────────────────
 _BOT_UA_RE = re.compile(
@@ -953,6 +975,19 @@ async def track_confirm(token: str, request: Request, db: Session = Depends(get_
     if not target:
         return {"redirect": "/"}
 
+    # Fire simulation_click risk signal
+    _fire_simulation_signal(target, "simulation_click", db)
+
+    # Auto-enrol in training on click
+    try:
+        from autonomy.engine import auto_enrol_training, check_and_award_badges
+        auto_enrol_training(target.email, "simulation_click", db)
+        check_and_award_badges(target.email, db)
+    except Exception as _e:
+        pass  # Training auto-enrol must not disrupt tracking
+
+    db.commit()
+
     theme = _get_theme(db, target)
     # Return the land URL — client-side JS navigates there
     return {"redirect": f"/track/land/{token}"}
@@ -994,6 +1029,18 @@ async def track_submit(token: str, request: Request, db: Session = Depends(get_d
             models.TrackingEvent.target_id == target.id
         ).all()
         events = [e.event_type for e in rows]
+        # Fire simulation_submit risk signal — highest severity simulation event
+        _fire_simulation_signal(target, "simulation_submit", db)
+
+        # Auto-enrol in credential safety training
+        try:
+            from autonomy.engine import auto_enrol_training, check_and_award_badges
+            auto_enrol_training(target.email, "simulation_submit", db)
+            check_and_award_badges(target.email, db)
+        except Exception as _e:
+            pass
+
+        db.commit()
     return HTMLResponse(build_awareness_page(target, campaign, events))
 
 

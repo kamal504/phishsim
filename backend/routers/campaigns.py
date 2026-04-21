@@ -1,15 +1,20 @@
 import csv
 import io
+import logging
 import random
 import re
 from datetime import datetime, timedelta
 from typing import List, Optional, Callable
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database import get_db
+import audit as audit_module
+import encryption
 import models, schemas
 from routers.auth import require_auth, require_operator, require_admin
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/campaigns", tags=["campaigns"])
 
@@ -250,7 +255,13 @@ async def add_targets_csv(campaign_id: int, file: UploadFile = File(...), _: mod
             # CVE-7: sanitize fields to prevent CSV formula injection
             name = _sanitize_csv_field(name)
             dept = _sanitize_csv_field(dept)
-            target = models.Target(campaign_id=campaign_id, email=email_lc, name=name, department=dept)
+            # Encrypt PII at rest if encryption key is configured
+            target = models.Target(
+                campaign_id=campaign_id,
+                email=encryption.encrypt(email_lc),
+                name=encryption.encrypt(name),
+                department=encryption.encrypt(dept),
+            )
             db.add(target)
             existing_emails.add(email_lc)
             added.append(email)
@@ -312,7 +323,12 @@ async def add_targets_xlsx(campaign_id: int, file: UploadFile = File(...), _: mo
             continue
         name = _sanitize_csv_field(name)
         dept = _sanitize_csv_field(dept)
-        target = models.Target(campaign_id=campaign_id, email=email_lc, name=name, department=dept)
+        target = models.Target(
+            campaign_id=campaign_id,
+            email=encryption.encrypt(email_lc),
+            name=encryption.encrypt(name),
+            department=encryption.encrypt(dept),
+        )
         db.add(target)
         existing_emails.add(email_lc)
         added.append(email)
@@ -366,12 +382,26 @@ def mark_reported(campaign_id: int, target_id: int, _: models.User = Depends(req
 # ── Campaign Actions ──────────────────────────────────────────
 
 @router.post("/{campaign_id}/launch", response_model=schemas.CampaignResponse)
-def launch_campaign(campaign_id: int, _: models.User = Depends(require_operator), db: Session = Depends(get_db)):
+def launch_campaign(campaign_id: int, request: Request,
+                    user: models.User = Depends(require_operator), db: Session = Depends(get_db)):
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     if campaign.status == "active":
         raise HTTPException(status_code=400, detail="Campaign already active")
+
+    # Block launch if approval workflow is enabled and campaign is not approved
+    approval_cfg = db.query(models.ApprovalConfig).first()
+    if approval_cfg and approval_cfg.enabled:
+        last_approval = (db.query(models.CampaignApproval)
+                         .filter_by(campaign_id=campaign_id, status="approved")
+                         .order_by(models.CampaignApproval.decided_at.desc())
+                         .first())
+        if not last_approval:
+            raise HTTPException(
+                status_code=403,
+                detail="Approval workflow is enabled. Submit this campaign for approval before launching."
+            )
 
     targets = db.query(models.Target).filter(models.Target.campaign_id == campaign_id).all()
     if not targets:
@@ -387,10 +417,10 @@ def launch_campaign(campaign_id: int, _: models.User = Depends(require_operator)
         if job:
             job.remove()
 
-    # NOTE: do NOT create fake sent/delivered events here.
-    # Real sent/delivered events are only created when emails are actually sent
-    # via Settings → Send Emails (SMTP). This keeps the funnel data accurate.
-
+    audit_module.write(db, "campaign.launched", actor=user.username,
+                       target_type="campaign", target_id=str(campaign_id),
+                       details={"campaign_name": campaign.name},
+                       ip_address=request.client.host if request.client else "")
     db.commit()
     db.refresh(campaign)
 
@@ -402,7 +432,8 @@ def launch_campaign(campaign_id: int, _: models.User = Depends(require_operator)
 
 
 @router.post("/{campaign_id}/complete", response_model=schemas.CampaignResponse)
-def complete_campaign(campaign_id: int, _: models.User = Depends(require_operator), db: Session = Depends(get_db)):
+def complete_campaign(campaign_id: int, request: Request,
+                      user: models.User = Depends(require_operator), db: Session = Depends(get_db)):
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -412,13 +443,18 @@ def complete_campaign(campaign_id: int, _: models.User = Depends(require_operato
         job = _scheduler.get_job(f"complete_{campaign_id}")
         if job:
             job.remove()
+    audit_module.write(db, "campaign.completed", actor=user.username,
+                       target_type="campaign", target_id=str(campaign_id),
+                       details={"campaign_name": campaign.name},
+                       ip_address=request.client.host if request.client else "")
     db.commit()
     db.refresh(campaign)
     return campaign
 
 
 @router.post("/{campaign_id}/pause", response_model=schemas.CampaignResponse)
-def pause_campaign(campaign_id: int, _: models.User = Depends(require_operator), db: Session = Depends(get_db)):
+def pause_campaign(campaign_id: int, request: Request,
+                   user: models.User = Depends(require_operator), db: Session = Depends(get_db)):
     """Pause an active campaign — stops new emails being sent but preserves tracking data."""
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if not campaign:
@@ -430,13 +466,18 @@ def pause_campaign(campaign_id: int, _: models.User = Depends(require_operator),
         job = _scheduler.get_job(f"complete_{campaign_id}")
         if job:
             job.pause()
+    audit_module.write(db, "campaign.paused", actor=user.username,
+                       target_type="campaign", target_id=str(campaign_id),
+                       details={"campaign_name": campaign.name},
+                       ip_address=request.client.host if request.client else "")
     db.commit()
     db.refresh(campaign)
     return campaign
 
 
 @router.post("/{campaign_id}/resume", response_model=schemas.CampaignResponse)
-def resume_campaign(campaign_id: int, _: models.User = Depends(require_operator), db: Session = Depends(get_db)):
+def resume_campaign(campaign_id: int, request: Request,
+                    user: models.User = Depends(require_operator), db: Session = Depends(get_db)):
     """Resume a paused campaign."""
     campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
     if not campaign:
@@ -448,6 +489,10 @@ def resume_campaign(campaign_id: int, _: models.User = Depends(require_operator)
         job = _scheduler.get_job(f"complete_{campaign_id}")
         if job:
             job.resume()
+    audit_module.write(db, "campaign.resumed", actor=user.username,
+                       target_type="campaign", target_id=str(campaign_id),
+                       details={"campaign_name": campaign.name},
+                       ip_address=request.client.host if request.client else "")
     db.commit()
     db.refresh(campaign)
     return campaign

@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
+import audit as audit_module
 import models
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -184,6 +185,13 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
 
     user = db.query(models.User).filter(models.User.username == data.username).first()
     if not user or not _verify_password(data.password, user.password_hash):
+        # Audit failed login attempt
+        try:
+            audit_module.write(db, "auth.login_failed", actor=data.username,
+                               details={"reason": "invalid_credentials"}, ip_address=client_ip)
+            db.commit()
+        except Exception:
+            pass
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled. Contact your administrator.")
@@ -205,6 +213,14 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
     db.commit()
 
     _clear_rate_limit(client_ip)
+
+    # Audit successful login
+    try:
+        audit_module.write(db, "auth.login", actor=user.username,
+                           details={"role": user.role}, ip_address=client_ip)
+        db.commit()
+    except Exception:
+        pass
 
     # HttpOnly cookie — invisible to JavaScript (CVE-8 fix)
     response.set_cookie(
@@ -237,7 +253,13 @@ def logout(
 ):
     token = _extract_token(authorization, phishsim_session)
     if token:
+        session = db.query(models.UserSession).filter(models.UserSession.token == token).first()
+        actor = session.user.username if session and session.user else "unknown"
         db.query(models.UserSession).filter(models.UserSession.token == token).delete()
+        try:
+            audit_module.write(db, "auth.logout", actor=actor)
+        except Exception:
+            pass
         db.commit()
     response.delete_cookie(key=COOKIE_NAME)
     return {"status": "logged_out"}

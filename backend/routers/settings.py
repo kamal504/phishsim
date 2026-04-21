@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from routers.auth import require_auth, require_operator, require_admin
+import audit as audit_module
 import models
 import schemas
 
@@ -197,7 +198,7 @@ def get_smtp_config(_: models.User = Depends(require_auth), db: Session = Depend
 
 
 @router.put("/smtp")
-def save_smtp_config(data: schemas.SMTPConfigUpdate, _: models.User = Depends(require_admin), db: Session = Depends(get_db)):
+def save_smtp_config(data: schemas.SMTPConfigUpdate, user: models.User = Depends(require_admin), db: Session = Depends(get_db)):
     """Persist SMTP + infrastructure settings."""
     cfg = _get_config(db)
     cfg.host       = data.host.strip()
@@ -216,6 +217,8 @@ def save_smtp_config(data: schemas.SMTPConfigUpdate, _: models.User = Depends(re
     cfg.is_configured = bool(
         cfg.host and cfg.username and cfg.password and cfg.from_email
     )
+    audit_module.write(db, "settings.smtp_updated", actor=user.username,
+                       details={"host": cfg.host, "from_email": cfg.from_email})
     db.commit()
     return {
         "status": "saved",
