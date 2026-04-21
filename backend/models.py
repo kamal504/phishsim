@@ -635,3 +635,62 @@ class TrainingEnrolment(Base):
     status       = Column(String, default="enrolled") # enrolled | in_progress | completed | skipped
     enrolled_at  = Column(DateTime, default=datetime.utcnow, index=True)
     completed_at = Column(DateTime, nullable=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# REPORT-PHISHING MAILBOX INTEGRATION
+# Polls a dedicated "report phishing" mailbox to automatically capture
+# employee reporting events without requiring manual button-clicks.
+# Supports IMAP (standard) and Microsoft Graph API (M365/Exchange Online).
+# ═════════════════════════════════════════════════════════════════════════════
+
+class MailboxConfig(Base):
+    """
+    Configuration for the dedicated report-phishing mailbox integration.
+    Supports two adapter types: IMAP (standard) and Microsoft Graph API (M365).
+    Only one configuration row is expected per deployment.
+    """
+    __tablename__ = "mailbox_config"
+
+    id              = Column(Integer, primary_key=True)
+    enabled         = Column(Boolean, default=False)
+    adapter_type    = Column(String, default="imap")    # imap | graph
+    display_name    = Column(String, default="Report Phishing Mailbox")
+    # IMAP settings
+    imap_host       = Column(String, default="")
+    imap_port       = Column(Integer, default=993)
+    imap_username   = Column(String, default="")
+    imap_password   = Column(String, default="")        # stored encrypted
+    imap_use_ssl    = Column(Boolean, default=True)
+    imap_folder     = Column(String, default="INBOX")
+    # Microsoft Graph API settings
+    graph_tenant_id     = Column(String, default="")
+    graph_client_id     = Column(String, default="")
+    graph_client_secret = Column(String, default="")    # stored encrypted
+    graph_mailbox_email = Column(String, default="")    # shared mailbox email address
+    # Polling settings
+    poll_interval_minutes  = Column(Integer, default=5)
+    delete_after_process   = Column(Boolean, default=False)
+    mark_read_after_process = Column(Boolean, default=True)
+    # State tracking
+    last_poll_at     = Column(DateTime, nullable=True)
+    last_poll_status = Column(String, default="never")  # never | ok | error
+    last_error       = Column(String, default="")
+    updated_at       = Column(DateTime, default=datetime.utcnow)
+
+
+class MailboxPollLog(Base):
+    """
+    Log entry for each mailbox poll run — tracks how many emails were
+    processed, matched to campaign targets, and skipped as unrelated.
+    """
+    __tablename__ = "mailbox_poll_log"
+
+    id              = Column(Integer, primary_key=True)
+    polled_at       = Column(DateTime, default=datetime.utcnow, index=True)
+    adapter_type    = Column(String, default="imap")
+    emails_checked  = Column(Integer, default=0)
+    emails_matched  = Column(Integer, default=0)     # matched to a campaign target → reported event fired
+    emails_skipped  = Column(Integer, default=0)     # could not match to any active campaign
+    status          = Column(String, default="ok")   # ok | error | partial
+    error_message   = Column(String, default="")

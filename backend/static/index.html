@@ -630,6 +630,54 @@ IT Security Team</textarea>
     </div>
   </div>
 
+  <!-- ── Campaign Progress Tracker ── -->
+  <div id="detail-progress-card" class="card" style="display:none">
+    <div class="inline-flex" style="margin-bottom:14px">
+      <span class="card-title" style="margin:0">📡 LIVE SEND PROGRESS</span>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <span id="progress-eta-label" style="font-size:12px;color:var(--muted)"></span>
+        <button class="btn btn-secondary btn-sm" onclick="loadCampaignProgress(state.campaignId)">🔄 Refresh</button>
+        <button class="btn btn-sm" id="progress-auto-refresh-btn" onclick="toggleProgressAutoRefresh()" style="background:rgba(34,197,94,.12);color:#4ade80;border-color:#4ade80;font-size:11px">⏱ Auto</button>
+      </div>
+    </div>
+    <div id="progress-delivery-bar-wrap" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:12px;color:var(--sub)">Email Delivery Progress</span>
+        <span id="progress-pct-label" style="font-size:13px;font-weight:700;color:#22c55e">—</span>
+      </div>
+      <div style="background:#1e2232;border-radius:6px;height:10px;overflow:hidden">
+        <div id="progress-bar-sent" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:6px;transition:width .4s;width:0%"></div>
+      </div>
+      <div style="display:flex;gap:18px;margin-top:8px;flex-wrap:wrap">
+        <span id="progress-stat-sent"     style="font-size:12px;color:#22c55e">✅ 0 sent</span>
+        <span id="progress-stat-failed"   style="font-size:12px;color:#ef4444">❌ 0 failed</span>
+        <span id="progress-stat-pending"  style="font-size:12px;color:var(--muted)">⏳ 0 pending</span>
+        <span id="progress-stat-rate"     style="font-size:12px;color:#818cf8">⚡ —/min</span>
+      </div>
+    </div>
+    <div class="card-title" style="margin-bottom:10px">Engagement Funnel</div>
+    <div id="progress-funnel-stages" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+  </div>
+
+  <!-- ── Bulk Report Status ── -->
+  <div id="detail-bulk-report-card" class="card" style="display:none">
+    <div class="inline-flex" style="margin-bottom:14px">
+      <span class="card-title" style="margin:0">🛡️ BULK REPORT STATUS</span>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <select id="bulk-report-filter" class="select-sm" onchange="filterBulkReport(this.value)">
+          <option value="">All Targets</option>
+          <option value="reported">Reported Only</option>
+          <option value="not_reported">Not Reported</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadBulkReportStatus(state.campaignId)">🔄 Refresh</button>
+      </div>
+    </div>
+    <div id="bulk-report-summary" style="display:flex;gap:20px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div id="bulk-report-table-wrap" style="max-height:400px;overflow-y:auto">
+      <div style="color:var(--muted);font-size:13px">Loading…</div>
+    </div>
+  </div>
+
   <div id="detail-urls" class="card" style="display:none">
     <div class="inline-flex" style="margin-bottom:14px">
       <span class="card-title" style="margin:0">🔗 PHISHING LINKS</span>
@@ -868,6 +916,7 @@ IT Security Team</textarea>
     <button class="settings-tab"        id="stab-notif"     onclick="showSettingsTab('notif')">🔔 Notifications</button>
     <button class="settings-tab"        id="stab-audit"       onclick="showSettingsTab('audit')">🔏 Audit Log</button>
     <button class="settings-tab"        id="stab-threat-intel" onclick="showSettingsTab('threat-intel')">🌐 Threat Intel</button>
+    <button class="settings-tab"        id="stab-mailbox"     onclick="showSettingsTab('mailbox')">📬 Report Mailbox</button>
     <button class="settings-tab"        id="stab-scale"       onclick="showSettingsTab('scale')">🚀 Scale &amp; Deploy</button>
   </div>
 
@@ -1595,6 +1644,141 @@ CMD ["uvicorn", "main:app",
       </div>
     </div>
   </div><!-- end stab-pane-threat-intel -->
+
+  <!-- ── MAILBOX CONFIG PANE ─────────────────────────────────── -->
+  <div id="stab-pane-mailbox" class="settings-tab-pane">
+    <div class="card">
+      <div class="section-sep">📬 REPORT-PHISHING MAILBOX INTEGRATION</div>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:18px">
+        Automatically capture employee phishing reports from a dedicated mailbox (e.g. <code style="color:#818cf8">report-phishing@company.com</code>).
+        PhishSim polls the inbox every few minutes and fires a <em>Reported</em> event for any email matched to an active campaign.
+        Supports standard IMAP and Microsoft Graph API (Exchange Online / M365).
+      </p>
+
+      <div class="form-group">
+        <label class="form-label">Enable Mailbox Integration</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
+          <input type="checkbox" id="mb-enabled">
+          <span style="font-size:13px;color:var(--muted)">Poll the report-phishing mailbox on a schedule</span>
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Adapter Type</label>
+        <select id="mb-adapter" onchange="showMailboxAdapterFields(this.value)">
+          <option value="imap">IMAP (Gmail, Outlook, Exchange, any standard server)</option>
+          <option value="graph">Microsoft Graph API (Exchange Online / M365 shared mailbox)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Display Name</label>
+        <input id="mb-display-name" placeholder="Report Phishing Mailbox">
+      </div>
+
+      <!-- IMAP fields -->
+      <div id="mb-imap-fields">
+        <div class="section-sep">IMAP Connection</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">IMAP Host</label>
+            <input id="mb-imap-host" placeholder="imap.gmail.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Port</label>
+            <input id="mb-imap-port" type="number" value="993" placeholder="993">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">Username / Email</label>
+            <input id="mb-imap-username" placeholder="report-phishing@company.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password / App Password</label>
+            <input id="mb-imap-password" type="password" placeholder="App password or OAuth token">
+            <span class="form-hint">For Gmail: use an App Password (Google Account → Security → App Passwords)</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">Mailbox Folder</label>
+            <input id="mb-imap-folder" value="INBOX" placeholder="INBOX">
+          </div>
+          <div class="form-group" style="justify-content:flex-end;padding-top:20px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="mb-imap-ssl" checked>
+              <span style="font-size:13px">Use SSL/TLS (recommended)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Graph API fields -->
+      <div id="mb-graph-fields" style="display:none">
+        <div class="section-sep">Microsoft Graph API (M365)</div>
+        <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+          Register an app in Azure AD → API permissions → Mail.Read + Mail.ReadWrite (Application). Grant admin consent.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="form-group">
+            <label class="form-label">Tenant ID</label>
+            <input id="mb-graph-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client (App) ID</label>
+            <input id="mb-graph-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Secret</label>
+            <input id="mb-graph-secret" type="password" placeholder="Azure AD app secret value">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Shared Mailbox Email</label>
+            <input id="mb-graph-mailbox" placeholder="report-phishing@company.com">
+          </div>
+        </div>
+      </div>
+
+      <!-- Polling options -->
+      <div class="section-sep">Polling Behaviour</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+        <div class="form-group">
+          <label class="form-label">Poll Interval (minutes)</label>
+          <input id="mb-poll-interval" type="number" value="5" min="1" max="60">
+        </div>
+        <div class="form-group" style="justify-content:flex-end;padding-top:20px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="mb-mark-read" checked>
+            <span style="font-size:13px">Mark emails as read after processing</span>
+          </label>
+        </div>
+        <div class="form-group" style="justify-content:flex-end;padding-top:20px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="mb-delete-after">
+            <span style="font-size:13px">Delete email after processing</span>
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn" onclick="saveMailboxConfig()">💾 Save Config</button>
+        <button class="btn btn-secondary" onclick="testMailboxConnection()">🔌 Test Connection</button>
+        <button class="btn btn-secondary" onclick="triggerMailboxPoll()">📬 Poll Now</button>
+        <span id="mb-save-msg" style="font-size:13px;color:#4ade80;display:none">Saved!</span>
+        <span id="mb-test-msg" style="font-size:13px;display:none"></span>
+      </div>
+
+      <!-- Poll log -->
+      <div class="section-sep" style="margin-top:22px">Recent Poll Log</div>
+      <div id="mb-poll-log" style="margin-top:10px">
+        <div style="color:var(--muted);font-size:13px">No polls yet.</div>
+      </div>
+
+      <!-- Status row -->
+      <div id="mb-status-row" style="display:none;margin-top:14px;padding:10px 14px;background:#0f1117;border-radius:8px;font-size:12px;color:var(--muted)"></div>
+    </div>
+  </div><!-- end stab-pane-mailbox -->
 
   </div><!-- end stab-pane-scale -->
 
@@ -2821,7 +3005,14 @@ function renderDetail(c, targets) {
     actions += '<button class="btn btn-secondary" onclick="completeCampaign()">✅ Mark Complete</button>';
   }
   if (c.status !== 'draft') {
-    actions += '<button class="btn btn-secondary" onclick="exportCampaign()" title="Download Excel report">📊 Export</button>';
+    actions += '<button class="btn btn-secondary" onclick="exportCampaign()" title="Download full Excel report with funnel analysis">📊 Export</button>';
+    actions += '<button class="btn btn-secondary" onclick="exportDeliveryStatus(' + c.id + ')" title="Export delivery status only (sent/failed/not attempted) — useful for interrupted campaigns">📋 Delivery Export</button>';
+  }
+  if (c.status !== 'draft') {
+    var hasFailed = targets.some(function(t){return t.send_failed||(!t.email_sent_at&&!t.send_failed)});
+    if (hasFailed) {
+      actions += '<button class="btn btn-warning" onclick="resendFailed(' + c.id + ')" title="Resend only to targets that failed delivery or were never attempted">🔁 Resend Undelivered</button>';
+    }
   }
   // Always available
   actions += '<button class="btn btn-secondary" onclick="openEditModal()" title="Edit campaign details">✏️ Edit</button>';
@@ -2865,6 +3056,19 @@ function renderDetail(c, targets) {
     }).catch(function(){});
   } else {
     funnelWrap.innerHTML = '<p style="color:var(--muted);font-size:13px;padding:20px 0">Launch the campaign to see funnel data.</p>';
+  }
+
+  // Progress tracker + Bulk report status
+  var progressCard = document.getElementById('detail-progress-card');
+  var bulkRepCard  = document.getElementById('detail-bulk-report-card');
+  if (c.status !== 'draft') {
+    progressCard.style.display = 'block';
+    bulkRepCard.style.display  = 'block';
+    loadCampaignProgress(c.id);
+    loadBulkReportStatus(c.id);
+  } else {
+    progressCard.style.display = 'none';
+    bulkRepCard.style.display  = 'none';
   }
 
   // Tracking URLs — populate target selector
@@ -4795,6 +4999,7 @@ function showSettingsTab(name) {
   if (name === 'notif')        loadNotifConfig();
   if (name === 'audit')        loadAuditLog();
   if (name === 'threat-intel') loadThreatIntelConfig();
+  if (name === 'mailbox')      loadMailboxConfig();
 }
 
 async function loadThreatIntelConfig() {
@@ -5980,6 +6185,320 @@ async function runBreachScanAll() {
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   CAMPAIGN PROGRESS TRACKER
+═══════════════════════════════════════════════════════════════ */
+
+var _progressAutoRefresh = null;
+
+function toggleProgressAutoRefresh() {
+  var btn = document.getElementById('progress-auto-refresh-btn');
+  if (_progressAutoRefresh) {
+    clearInterval(_progressAutoRefresh);
+    _progressAutoRefresh = null;
+    btn.style.background = 'rgba(34,197,94,.12)';
+    btn.style.color = '#4ade80';
+    btn.textContent = '⏱ Auto';
+  } else {
+    _progressAutoRefresh = setInterval(function() {
+      if (state.campaignId) loadCampaignProgress(state.campaignId);
+    }, 10000);
+    btn.style.background = 'rgba(34,197,94,.35)';
+    btn.style.color = '#fff';
+    btn.textContent = '⏱ Auto ON';
+    if (state.campaignId) loadCampaignProgress(state.campaignId);
+  }
+}
+
+async function loadCampaignProgress(cid) {
+  try {
+    var d = await GET('/campaigns/' + cid + '/progress');
+
+    var total    = d.total_targets || 0;
+    var sent     = d.smtp_sent     || 0;
+    var failed   = d.smtp_failed   || 0;
+    var pending  = d.not_attempted || 0;
+    var pct      = d.processed_pct || 0;
+    var rate     = d.sends_per_min || 0;
+
+    // Progress bar
+    document.getElementById('progress-bar-sent').style.width = pct + '%';
+    document.getElementById('progress-pct-label').textContent = pct + '% delivered';
+
+    // Stats
+    document.getElementById('progress-stat-sent').textContent    = '✅ ' + sent + ' sent';
+    document.getElementById('progress-stat-failed').textContent  = '❌ ' + failed + ' failed';
+    document.getElementById('progress-stat-pending').textContent = '⏳ ' + pending + ' pending';
+    document.getElementById('progress-stat-rate').textContent    = '⚡ ' + rate + '/min';
+
+    // ETA
+    var etaLabel = document.getElementById('progress-eta-label');
+    if (d.eta_iso && pending > 0) {
+      var etaMin = Math.ceil((d.eta_seconds || 0) / 60);
+      etaLabel.textContent = '⏱ ETA ~' + etaMin + 'min';
+      etaLabel.style.color = '#f59e0b';
+    } else if (pending === 0) {
+      etaLabel.textContent = '✅ All emails processed';
+      etaLabel.style.color = '#22c55e';
+    } else {
+      etaLabel.textContent = '';
+    }
+
+    // Funnel stages
+    var STAGE_COLORS = {sent:'#22c55e',delivered:'#16a34a',opened:'#818cf8',clicked:'#f59e0b',submitted:'#ef4444',reported:'#4ade80'};
+    var funnel = d.funnel || [];
+    var stagesEl = document.getElementById('progress-funnel-stages');
+    stagesEl.innerHTML = funnel.map(function(f) {
+      var col = STAGE_COLORS[f.stage] || '#6366f1';
+      return '<div style="flex:1;min-width:100px;background:#0f1117;border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-align:center">' +
+        '<div style="font-size:22px;font-weight:700;color:' + col + '">' + f.count + '</div>' +
+        '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:3px 0">' + f.stage + '</div>' +
+        '<div style="font-size:12px;color:' + col + '">' + f.of_total_pct + '%</div>' +
+        '<div style="font-size:10px;color:#475569">conv: ' + f.conversion_pct + '%</div>' +
+      '</div>';
+    }).join('');
+  } catch(e) {
+    console.warn('loadCampaignProgress:', e);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   BULK REPORT STATUS
+═══════════════════════════════════════════════════════════════ */
+
+var _bulkReportFilter = '';
+
+async function loadBulkReportStatus(cid) {
+  _bulkReportFilter = document.getElementById('bulk-report-filter') ? document.getElementById('bulk-report-filter').value : '';
+  try {
+    var url = '/campaigns/' + cid + '/targets/report-status?limit=500';
+    if (_bulkReportFilter) url += '&reported_filter=' + _bulkReportFilter;
+    var d = await GET(url);
+
+    // Summary row
+    var summaryEl = document.getElementById('bulk-report-summary');
+    var total     = d.total || 0;
+    var reported  = d.reported || 0;
+    var notRep    = d.not_reported || 0;
+    var repPct    = total ? Math.round(reported / total * 100) : 0;
+    summaryEl.innerHTML =
+      '<div style="background:#0f1117;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:22px;font-weight:700;color:#22c55e">' + reported + '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">REPORTED</div>' +
+      '</div>' +
+      '<div style="background:#0f1117;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:22px;font-weight:700;color:#ef4444">' + notRep + '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">NOT REPORTED</div>' +
+      '</div>' +
+      '<div style="background:#0f1117;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:22px;font-weight:700;color:#818cf8">' + repPct + '%</div>' +
+        '<div style="font-size:11px;color:var(--muted)">REPORT RATE</div>' +
+      '</div>' +
+      '<div style="background:#0f1117;border-radius:8px;padding:10px 16px;display:flex;flex-direction:column;gap:4px">' +
+        '<div style="font-size:22px;font-weight:700;color:var(--text)">' + total + '</div>' +
+        '<div style="font-size:11px;color:var(--muted)">TOTAL TARGETS</div>' +
+      '</div>';
+
+    // Table
+    var rows = d.results || [];
+    var tableEl = document.getElementById('bulk-report-table-wrap');
+    if (!rows.length) {
+      tableEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:10px 0">No targets match the current filter.</div>';
+      return;
+    }
+    tableEl.innerHTML = '<table class="tbl">' +
+      '<thead><tr>' +
+      '<th>Email</th><th>Name</th><th>Dept</th>' +
+      '<th style="text-align:center">Reported</th><th style="text-align:center">Opened</th>' +
+      '<th style="text-align:center">Clicked</th><th style="text-align:center">Submitted</th>' +
+      '<th>Sent At</th><th style="text-align:center">Actions</th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function(r) {
+        var repStyle = r.reported ? 'color:#22c55e' : 'color:#ef4444';
+        return '<tr>' +
+          '<td><div style="font-size:13px">' + escHtml(r.email) + '</div></td>' +
+          '<td>' + escHtml(r.name) + '</td>' +
+          '<td><span style="font-size:12px;color:var(--muted)">' + escHtml(r.department) + '</span></td>' +
+          '<td style="text-align:center"><span style="' + repStyle + ';font-weight:700">' + (r.reported ? '🛡 Yes' : '✗ No') + '</span></td>' +
+          '<td style="text-align:center">' + (r.opened ? '✓' : '') + '</td>' +
+          '<td style="text-align:center">' + (r.clicked ? '<span style="color:#f59e0b">✓</span>' : '') + '</td>' +
+          '<td style="text-align:center">' + (r.submitted ? '<span style="color:#ef4444">✓</span>' : '') + '</td>' +
+          '<td><span style="font-size:11px;color:var(--muted)">' + (r.email_sent_at ? r.email_sent_at.slice(0,16).replace('T',' ') : (r.send_failed ? '<span style="color:#ef4444">Failed</span>' : '—')) + '</span></td>' +
+          '<td style="text-align:center">' + (!r.reported ? '<button class="btn btn-secondary btn-sm" style="font-size:11px;padding:3px 8px" onclick="markReportedBulk(' + r.target_id + ')" title="Mark as reported">🛡 Mark</button>' : '') + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) {
+    console.warn('loadBulkReportStatus:', e);
+  }
+}
+
+function filterBulkReport(val) {
+  if (state.campaignId) loadBulkReportStatus(state.campaignId);
+}
+
+async function markReportedBulk(targetId) {
+  try {
+    await apiFetch('/campaigns/' + state.campaignId + '/targets/' + targetId + '/report', {method:'POST'});
+    loadBulkReportStatus(state.campaignId);
+    showToast('Marked as reported ✓', 'green');
+  } catch(e) { showToast('Error: ' + e.message, 'red'); }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DELIVERY STATUS EXPORT + RESEND UNDELIVERED
+═══════════════════════════════════════════════════════════════ */
+
+function exportDeliveryStatus(cid) {
+  var a = document.createElement('a');
+  a.href = '/api/campaigns/' + cid + '/export/delivery';
+  a.download = '';
+  a.click();
+  showToast('Downloading delivery status export…', 'green');
+}
+
+async function resendFailed(cid) {
+  if (!confirm('Resend emails to all targets that failed delivery or were never attempted?\n\nThis will re-trigger SMTP delivery for those targets only.')) return;
+  try {
+    showToast('Queuing resend…', 'green');
+    var r = await apiFetch('/campaigns/' + cid + '/resend-failed', {method:'POST'});
+    showToast(r.message || 'Resend queued!', 'green');
+    setTimeout(function() { loadCampaignProgress(cid); }, 2000);
+  } catch(e) {
+    showToast('Resend error: ' + e.message, 'red');
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   MAILBOX CONFIG (SETTINGS TAB)
+═══════════════════════════════════════════════════════════════ */
+
+function showMailboxAdapterFields(val) {
+  document.getElementById('mb-imap-fields').style.display  = (val === 'imap')  ? 'block' : 'none';
+  document.getElementById('mb-graph-fields').style.display = (val === 'graph') ? 'block' : 'none';
+}
+
+async function loadMailboxConfig() {
+  try {
+    var d = await GET('/api/mailbox/config');
+    document.getElementById('mb-enabled').checked         = d.enabled || false;
+    document.getElementById('mb-adapter').value           = d.adapter_type || 'imap';
+    document.getElementById('mb-display-name').value      = d.display_name || '';
+    // IMAP
+    document.getElementById('mb-imap-host').value     = d.imap_host     || '';
+    document.getElementById('mb-imap-port').value     = d.imap_port     || 993;
+    document.getElementById('mb-imap-username').value = d.imap_username || '';
+    document.getElementById('mb-imap-password').value = d.imap_password || '';
+    document.getElementById('mb-imap-folder').value   = d.imap_folder   || 'INBOX';
+    document.getElementById('mb-imap-ssl').checked    = d.imap_use_ssl !== false;
+    // Graph
+    document.getElementById('mb-graph-tenant').value    = d.graph_tenant_id      || '';
+    document.getElementById('mb-graph-client-id').value = d.graph_client_id      || '';
+    document.getElementById('mb-graph-secret').value    = d.graph_client_secret  || '';
+    document.getElementById('mb-graph-mailbox').value   = d.graph_mailbox_email  || '';
+    // Polling
+    document.getElementById('mb-poll-interval').value  = d.poll_interval_minutes || 5;
+    document.getElementById('mb-mark-read').checked    = d.mark_read_after_process !== false;
+    document.getElementById('mb-delete-after').checked = d.delete_after_process || false;
+
+    // Show correct adapter fields
+    showMailboxAdapterFields(d.adapter_type || 'imap');
+
+    // Status row
+    if (d.last_poll_at) {
+      var statusRow = document.getElementById('mb-status-row');
+      statusRow.style.display = 'block';
+      var statusColor = d.last_poll_status === 'ok' ? '#22c55e' : '#ef4444';
+      statusRow.innerHTML = 'Last poll: <strong>' + new Date(d.last_poll_at).toLocaleString() + '</strong> · ' +
+        'Status: <span style="color:' + statusColor + '">' + d.last_poll_status + '</span>' +
+        (d.last_error ? ' · Error: ' + escHtml(d.last_error.slice(0,80)) : '');
+    }
+
+    // Load poll log
+    loadMailboxPollLog();
+  } catch(e) { console.warn('loadMailboxConfig:', e); }
+}
+
+async function saveMailboxConfig() {
+  var payload = {
+    enabled:                 document.getElementById('mb-enabled').checked,
+    adapter_type:            document.getElementById('mb-adapter').value,
+    display_name:            document.getElementById('mb-display-name').value,
+    imap_host:               document.getElementById('mb-imap-host').value,
+    imap_port:               parseInt(document.getElementById('mb-imap-port').value) || 993,
+    imap_username:           document.getElementById('mb-imap-username').value,
+    imap_password:           document.getElementById('mb-imap-password').value,
+    imap_folder:             document.getElementById('mb-imap-folder').value || 'INBOX',
+    imap_use_ssl:            document.getElementById('mb-imap-ssl').checked,
+    graph_tenant_id:         document.getElementById('mb-graph-tenant').value,
+    graph_client_id:         document.getElementById('mb-graph-client-id').value,
+    graph_client_secret:     document.getElementById('mb-graph-secret').value,
+    graph_mailbox_email:     document.getElementById('mb-graph-mailbox').value,
+    poll_interval_minutes:   parseInt(document.getElementById('mb-poll-interval').value) || 5,
+    mark_read_after_process: document.getElementById('mb-mark-read').checked,
+    delete_after_process:    document.getElementById('mb-delete-after').checked,
+  };
+  try {
+    await apiFetch('/api/mailbox/config', {method:'POST', body: JSON.stringify(payload)});
+    var msg = document.getElementById('mb-save-msg');
+    msg.style.display = 'inline';
+    setTimeout(function(){ msg.style.display='none'; }, 2500);
+    showToast('Mailbox config saved ✓', 'green');
+  } catch(e) { showToast('Save error: ' + e.message, 'red'); }
+}
+
+async function testMailboxConnection() {
+  var msgEl = document.getElementById('mb-test-msg');
+  msgEl.style.display = 'inline';
+  msgEl.style.color   = '#94a3b8';
+  msgEl.textContent   = '⏳ Testing…';
+  try {
+    var payload = { adapter_type: document.getElementById('mb-adapter').value };
+    var r = await apiFetch('/api/mailbox/test', {method:'POST', body: JSON.stringify(payload)});
+    msgEl.style.color   = r.ok ? '#22c55e' : '#ef4444';
+    msgEl.textContent   = (r.ok ? '✅ ' : '❌ ') + (r.message || '');
+  } catch(e) {
+    msgEl.style.color = '#ef4444';
+    msgEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function triggerMailboxPoll() {
+  try {
+    showToast('Polling mailbox…', 'green');
+    var r = await apiFetch('/api/mailbox/poll', {method:'POST'});
+    var res = r.result || {};
+    showToast('Poll complete: ' + (res.emails_checked||0) + ' checked, ' + (res.emails_matched||0) + ' matched', 'green');
+    loadMailboxPollLog();
+    loadMailboxConfig();
+  } catch(e) { showToast('Poll error: ' + e.message, 'red'); }
+}
+
+async function loadMailboxPollLog() {
+  try {
+    var logs = await GET('/api/mailbox/logs?limit=10');
+    var el   = document.getElementById('mb-poll-log');
+    if (!logs.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px">No polls recorded yet.</div>';
+      return;
+    }
+    el.innerHTML = '<table class="tbl"><thead><tr><th>Time</th><th>Adapter</th><th>Checked</th><th>Matched</th><th>Skipped</th><th>Status</th></tr></thead><tbody>' +
+      logs.map(function(l) {
+        var sc = l.status === 'ok' ? '#22c55e' : '#ef4444';
+        return '<tr>' +
+          '<td style="font-size:12px">' + new Date(l.polled_at).toLocaleString() + '</td>' +
+          '<td><span class="pill" style="background:rgba(99,102,241,.12);color:#818cf8">' + l.adapter_type + '</span></td>' +
+          '<td style="text-align:center">' + l.emails_checked + '</td>' +
+          '<td style="text-align:center;color:#22c55e;font-weight:700">' + l.emails_matched + '</td>' +
+          '<td style="text-align:center;color:var(--muted)">' + l.emails_skipped + '</td>' +
+          '<td><span style="color:' + sc + ';font-weight:600">' + l.status.toUpperCase() + '</span>' +
+            (l.error_message ? '<div style="font-size:10px;color:#ef4444;margin-top:2px">' + escHtml(l.error_message.slice(0,60)) + '</div>' : '') + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) { console.warn('loadMailboxPollLog:', e); }
 }
 </script>
 </body>

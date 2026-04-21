@@ -15,6 +15,7 @@ from routers import approvals as approvals_router
 from routers import threat_intel as threat_intel_router
 from routers import autonomy as autonomy_router
 from routers import compliance as compliance_router
+from routers import mailbox as mailbox_router
 
 # ── Structured logging (CVE-16 fix) ──────────────────────────────────────────
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -82,6 +83,17 @@ def _migrate_db():
         # Template difficulty (Phase 3)
         "ALTER TABLE email_templates ADD COLUMN difficulty INTEGER DEFAULT 2",
         # Phase 3-5 tables are created by SQLAlchemy Base.metadata.create_all()
+        # Mailbox integration (safety-net column additions)
+        "ALTER TABLE mailbox_config ADD COLUMN display_name VARCHAR DEFAULT 'Report Phishing Mailbox'",
+        "ALTER TABLE mailbox_config ADD COLUMN imap_folder VARCHAR DEFAULT 'INBOX'",
+        "ALTER TABLE mailbox_config ADD COLUMN imap_use_ssl BOOLEAN DEFAULT 1",
+        "ALTER TABLE mailbox_config ADD COLUMN mark_read_after_process BOOLEAN DEFAULT 1",
+        "ALTER TABLE mailbox_config ADD COLUMN delete_after_process BOOLEAN DEFAULT 0",
+        "ALTER TABLE mailbox_config ADD COLUMN poll_interval_minutes INTEGER DEFAULT 5",
+        "ALTER TABLE mailbox_config ADD COLUMN last_poll_at DATETIME",
+        "ALTER TABLE mailbox_config ADD COLUMN last_poll_status VARCHAR DEFAULT 'never'",
+        "ALTER TABLE mailbox_config ADD COLUMN last_error VARCHAR DEFAULT ''",
+        "ALTER TABLE mailbox_config ADD COLUMN updated_at DATETIME",
     ]
     with engine.connect() as conn:
         for sql in migrations:
@@ -300,6 +312,22 @@ try:
     scheduler.add_job(_autonomy_cycle_job,     trigger="interval", hours=24,   id="autonomy_cycle")
     scheduler.add_job(_leaderboard_refresh_job,trigger="cron",     day=1, hour=3, id="leaderboard_refresh")
 
+    # ── Reporting mailbox polling job ─────────────────────────────────────────
+    def _mailbox_poll_job():
+        db = SessionLocal()
+        try:
+            from mailbox.poller import run_mailbox_poll
+            result = run_mailbox_poll(db)
+            if result.get("emails_matched", 0) > 0:
+                log.info(f"Mailbox poll: matched {result['emails_matched']} report(s)")
+        except Exception as e:
+            log.error(f"Mailbox poll job error: {e}")
+        finally:
+            db.close()
+
+    # Initial interval: 5 minutes — MailboxConfig.poll_interval_minutes can override this at runtime
+    scheduler.add_job(_mailbox_poll_job, trigger="interval", minutes=5, id="mailbox_poll")
+
     # Start syslog listener if gateway is configured for syslog
     def _maybe_start_syslog():
         db = SessionLocal()
@@ -362,6 +390,7 @@ app.include_router(approvals_router.router)
 app.include_router(threat_intel_router.router)
 app.include_router(autonomy_router.router)
 app.include_router(compliance_router.router)
+app.include_router(mailbox_router.router)
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["health"])

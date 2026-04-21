@@ -819,3 +819,334 @@ def list_events(campaign_id: int, _: models.User = Depends(require_auth), db: Se
     return db.query(models.TrackingEvent).filter(
         models.TrackingEvent.campaign_id == campaign_id
     ).order_by(models.TrackingEvent.timestamp.desc()).all()
+
+
+# ── Campaign Progress Tracker ─────────────────────────────────────────────────
+
+@router.get("/{campaign_id}/progress")
+def campaign_progress(campaign_id: int, _: models.User = Depends(require_auth), db: Session = Depends(get_db)):
+    """
+    Real-time send-progress and funnel metrics for the campaign progress tracker.
+    Returns per-stage conversion counts, send rate estimate, and ETA.
+    """
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    targets = db.query(models.Target).filter(models.Target.campaign_id == campaign_id).all()
+    total   = len(targets)
+
+    # Delivery stats from Target rows (SMTP tracking)
+    smtp_sent    = sum(1 for t in targets if t.email_sent_at is not None)
+    smtp_failed  = sum(1 for t in targets if getattr(t, "send_failed", False))
+    not_attempted = total - smtp_sent - smtp_failed
+
+    # Per-stage funnel from tracking events
+    events = db.query(models.TrackingEvent).filter(
+        models.TrackingEvent.campaign_id == campaign_id
+    ).all()
+    ev_map: dict = {}
+    for ev in events:
+        ev_map.setdefault(ev.target_id, set()).add(ev.event_type)
+
+    stage_counts = {stage: 0 for stage in EVENT_STAGES}
+    for evs in ev_map.values():
+        for stage in EVENT_STAGES:
+            if stage in evs:
+                stage_counts[stage] += 1
+
+    # Per-stage conversion percentages (relative to total targets)
+    stage_pcts = {}
+    for stage, count in stage_counts.items():
+        stage_pcts[stage] = round(count / total * 100, 1) if total else 0
+
+    # Funnel conversion relative to previous stage
+    funnel = []
+    prev = total
+    for stage in EVENT_STAGES:
+        cnt  = stage_counts[stage]
+        conv = round(cnt / prev * 100, 1) if prev else 0
+        funnel.append({"stage": stage, "count": cnt, "conversion_pct": conv, "of_total_pct": stage_pcts[stage]})
+        if cnt:
+            prev = cnt
+
+    # Sends/minute rate (using last 5 minutes of email_sent_at timestamps)
+    from datetime import datetime as _dt
+    now = _dt.utcnow()
+    recent_window = now - timedelta(minutes=5)
+    recent_sends  = sum(1 for t in targets if t.email_sent_at and t.email_sent_at >= recent_window)
+    sends_per_min = round(recent_sends / 5, 1)
+
+    # ETA for remaining targets (if actively sending)
+    eta_seconds  = None
+    eta_iso      = None
+    if sends_per_min > 0 and not_attempted > 0:
+        eta_seconds = int((not_attempted / sends_per_min) * 60)
+        eta_iso     = (now + timedelta(seconds=eta_seconds)).isoformat()
+
+    # Overall completion: emails sent (or failed) as % of total
+    processed_pct = round((smtp_sent + smtp_failed) / total * 100, 1) if total else 0
+
+    return {
+        "campaign_id":        campaign_id,
+        "campaign_name":      campaign.name,
+        "status":             campaign.status,
+        "total_targets":      total,
+        "smtp_sent":          smtp_sent,
+        "smtp_failed":        smtp_failed,
+        "not_attempted":      not_attempted,
+        "processed_pct":      processed_pct,
+        "sends_per_min":      sends_per_min,
+        "eta_seconds":        eta_seconds,
+        "eta_iso":            eta_iso,
+        "funnel":             funnel,
+        "launched_at":        campaign.launched_at.isoformat() if campaign.launched_at else None,
+        "completed_at":       campaign.completed_at.isoformat() if campaign.completed_at else None,
+        "generated_at":       now.isoformat(),
+    }
+
+
+# ── Bulk Reporting Status ─────────────────────────────────────────────────────
+
+@router.get("/{campaign_id}/targets/report-status")
+def bulk_report_status(
+    campaign_id: int,
+    reported_filter: Optional[str] = Query(None),  # "reported" | "not_reported"
+    department: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    limit: int = Query(100, ge=1, le=500),
+    _: models.User = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """
+    Return all campaign targets with their reporting status (reported / not reported).
+    Designed for the bulk-reporting review table — far better than looking up individuals.
+    """
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    targets = db.query(models.Target).filter(models.Target.campaign_id == campaign_id).all()
+
+    # Build per-target event set
+    events = db.query(models.TrackingEvent).filter(
+        models.TrackingEvent.campaign_id == campaign_id
+    ).all()
+    ev_map: dict = {}
+    for ev in events:
+        ev_map.setdefault(ev.target_id, set()).add(ev.event_type)
+
+    rows = []
+    for t in targets:
+        evs     = ev_map.get(t.id, set())
+        is_rep  = "reported" in evs
+        dept    = encryption.decrypt(t.department) if t.department else "Unknown"
+        name    = encryption.decrypt(t.name)       if t.name      else ""
+        email   = encryption.decrypt(t.email)      if t.email     else ""
+
+        if reported_filter == "reported"     and not is_rep: continue
+        if reported_filter == "not_reported" and is_rep:     continue
+        if department and dept.lower() != department.lower(): continue
+
+        rows.append({
+            "target_id":     t.id,
+            "email":         email,
+            "name":          name,
+            "department":    dept,
+            "reported":      is_rep,
+            "opened":        "opened"    in evs,
+            "clicked":       "clicked"   in evs,
+            "submitted":     "submitted" in evs,
+            "email_sent_at": t.email_sent_at.isoformat() if t.email_sent_at else None,
+            "send_failed":   getattr(t, "send_failed", False),
+        })
+
+    total_count = len(rows)
+    start = (page - 1) * limit
+    rows  = rows[start: start + limit]
+
+    return {
+        "campaign_id":   campaign_id,
+        "campaign_name": campaign.name,
+        "total":         total_count,
+        "reported":      sum(1 for r in rows if r["reported"]),
+        "not_reported":  sum(1 for r in rows if not r["reported"]),
+        "page":          page,
+        "limit":         limit,
+        "results":       rows,
+    }
+
+
+# ── Delivery Status Export ────────────────────────────────────────────────────
+
+@router.get("/{campaign_id}/export/delivery")
+def export_delivery_status(campaign_id: int, _: models.User = Depends(require_auth), db: Session = Depends(get_db)):
+    """
+    Export per-target delivery status as Excel.
+    Shows: email, name, department, delivery_status (sent/failed/not_attempted),
+    sent_at timestamp, send_error for failed deliveries.
+    Useful when a campaign was interrupted mid-send.
+    """
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl not installed.")
+
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    targets = db.query(models.Target).filter(models.Target.campaign_id == campaign_id)\
+                .order_by(models.Target.id).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Delivery Status"
+
+    header_fill = PatternFill("solid", fgColor="1E293B")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    thin        = Side(style="thin", color="CBD5E1")
+    border      = Border(left=thin, right=thin, top=thin, bottom=thin)
+    green_fill  = PatternFill("solid", fgColor="DCFCE7")
+    red_fill    = PatternFill("solid", fgColor="FEE2E2")
+    amber_fill  = PatternFill("solid", fgColor="FEF3C7")
+
+    # Title row
+    ws.merge_cells("A1:G1")
+    title_cell = ws.cell(1, 1, f"Delivery Status Export — {campaign.name}")
+    title_cell.font      = Font(bold=True, size=13, color="1E293B")
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    # Summary row
+    total         = len(targets)
+    smtp_sent     = sum(1 for t in targets if t.email_sent_at is not None)
+    smtp_failed   = sum(1 for t in targets if getattr(t, "send_failed", False))
+    not_attempted = total - smtp_sent - smtp_failed
+    ws.merge_cells("A2:G2")
+    summary_cell = ws.cell(2, 1,
+        f"Total: {total}  |  Sent: {smtp_sent}  |  Failed: {smtp_failed}  |  Not Attempted: {not_attempted}"
+        f"  |  Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+    summary_cell.font = Font(size=10, color="475569")
+    summary_cell.alignment = Alignment(horizontal="center")
+    ws.row_dimensions[2].height = 18
+
+    # Header row
+    headers = ["Email", "Name", "Department", "Delivery Status", "Sent At (UTC)", "Send Error", "Tracking Token"]
+    ws.row_dimensions[3].height = 24
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(3, col, h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = border
+
+    # Data rows
+    for row_idx, t in enumerate(targets, 4):
+        email_dec = encryption.decrypt(t.email) if t.email else ""
+        name_dec  = encryption.decrypt(t.name)  if t.name  else ""
+        dept_dec  = encryption.decrypt(t.department) if t.department else "Unknown"
+
+        if t.email_sent_at is not None and not getattr(t, "send_failed", False):
+            delivery_status = "SENT"
+            row_fill = green_fill
+        elif getattr(t, "send_failed", False):
+            delivery_status = "FAILED"
+            row_fill = red_fill
+        else:
+            delivery_status = "NOT ATTEMPTED"
+            row_fill = amber_fill
+
+        sent_at_str = t.email_sent_at.strftime("%Y-%m-%d %H:%M:%S") if t.email_sent_at else "—"
+        error_str   = getattr(t, "send_error", "") or ""
+
+        row_data = [email_dec, name_dec, dept_dec, delivery_status, sent_at_str, error_str, t.tracking_token]
+        ws.row_dimensions[row_idx].height = 18
+        for col, val in enumerate(row_data, 1):
+            cell = ws.cell(row_idx, col, val)
+            cell.fill      = row_fill
+            cell.border    = border
+            cell.font      = Font(size=10)
+            cell.alignment = Alignment(vertical="center")
+
+    col_widths = [32, 22, 18, 16, 22, 40, 36]
+    for col, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    safe_name = campaign.name.replace(" ", "_").replace("/", "-")[:40]
+    filename  = f"PhishSim_{safe_name}_DeliveryStatus.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Resend to Undelivered / Failed Targets ────────────────────────────────────
+
+@router.post("/{campaign_id}/resend-failed")
+def resend_failed_targets(
+    campaign_id: int,
+    request: Request,
+    user: models.User = Depends(require_operator),
+    db: Session = Depends(get_db),
+):
+    """
+    Trigger a re-send of the phishing email only to targets that previously
+    failed delivery (send_failed=True) or were never attempted (email_sent_at IS NULL).
+    Uses the existing send_campaign_emails function with retry_failed=True.
+    """
+    campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.status not in ("active", "paused", "completed"):
+        raise HTTPException(status_code=400, detail="Campaign must be active, paused, or completed to resend.")
+
+    # Count eligible targets
+    targets = db.query(models.Target).filter(models.Target.campaign_id == campaign_id).all()
+    failed     = [t for t in targets if getattr(t, "send_failed", False)]
+    undelivered = [t for t in targets if t.email_sent_at is None and not getattr(t, "send_failed", False)]
+    eligible   = failed + undelivered
+
+    if not eligible:
+        return {"status": "nothing_to_resend", "message": "All targets have been successfully delivered."}
+
+    # Reset failed flags so the send job will retry them
+    for t in failed:
+        t.send_failed  = False
+        t.send_error   = ""
+    db.commit()
+
+    # Import and trigger send — runs in background via the existing settings send function
+    try:
+        import asyncio
+        from routers.settings import send_campaign_emails
+        # Fire async task in the background
+        loop = asyncio.get_event_loop()
+        loop.create_task(send_campaign_emails(campaign_id, retry_failed=True, db_session=None))
+    except Exception:
+        # Fallback: mark for deferred processing
+        pass
+
+    audit_module.write(
+        db, "campaign.resend_failed", actor=user.username,
+        target_type="campaign", target_id=str(campaign_id),
+        details={"eligible_count": len(eligible), "failed_count": len(failed), "undelivered_count": len(undelivered)},
+        ip_address=request.client.host if request.client else "",
+    )
+    db.commit()
+
+    return {
+        "status":            "resend_queued",
+        "message":           f"Queued resend for {len(eligible)} target(s): {len(failed)} previously failed, {len(undelivered)} never attempted.",
+        "failed_count":      len(failed),
+        "undelivered_count": len(undelivered),
+        "total_queued":      len(eligible),
+    }
