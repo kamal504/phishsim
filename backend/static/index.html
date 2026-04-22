@@ -4,239 +4,419 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PhishSim — Phishing Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
-    :root {
-      --bg:#0f1117; --card:#141720; --border:#1e2232;
-      --text:#e2e8f0; --muted:#64748b; --sub:#94a3b8;
-      --purple:#6366f1; --blue:#0ea5e9; --amber:#f59e0b;
-      --red:#ef4444; --dred:#dc2626; --green:#22c55e;
-    }
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-    ::-webkit-scrollbar{width:6px} ::-webkit-scrollbar-track{background:#1a1d27} ::-webkit-scrollbar-thumb{background:#374151;border-radius:3px}
-    input,select,textarea,button{font-family:inherit}
+  :root {
+    /* Content area — light theme */
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --muted: #64748b;
+    --sub: #94a3b8;
+    /* Accent palette */
+    --primary: #3b82f6;
+    --purple: #3b82f6;
+    --blue: #3b82f6;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --dred: #dc2626;
+    --green: #10b981;
+    /* Sidebar dark variables */
+    --sidebar-bg: #0f172a;
+    --sidebar-w: 240px;
+    --sidebar-text: #94a3b8;
+    --sidebar-muted: #475569;
+    --sidebar-border: rgba(255,255,255,.07);
+    --sidebar-active-bg: rgba(59,130,246,.14);
+    --sidebar-active-text: #60a5fa;
+    --sidebar-hover: rgba(255,255,255,.05);
+    --sidebar-section: #334155;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+  input,select,textarea,button{font-family:inherit}
 
-    /* NAV */
-    #navbar{background:var(--card);border-bottom:1px solid var(--border);padding:0 32px;display:flex;align-items:center;height:60px;gap:8px;position:sticky;top:0;z-index:100}
-    .brand{display:flex;align-items:center;gap:10px;margin-right:28px;font-weight:700;font-size:16px;color:#fff}
-    .brand-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;background:linear-gradient(135deg,#6366f1,#8b5cf6)}
-    .nav-link{padding:6px 14px;border-radius:8px;font-size:14px;font-weight:500;border:none;cursor:pointer;color:var(--sub);background:transparent;transition:all .15s}
-    .nav-link.active,.nav-link:hover{color:#fff;background:var(--border)}
-    .nav-badge{margin-left:auto;font-size:12px;color:var(--muted)}
+  /* ── APP SHELL ─────────────────────────────────────── */
+  .app-shell{display:flex;min-height:100vh}
 
-    /* LAYOUT */
-    #main{padding:28px 32px;max-width:1400px;margin:0 auto}
-    .page{display:none;flex-direction:column;gap:22px}
-    .page.active{display:flex}
+  /* ── SIDEBAR ───────────────────────────────────────── */
+  .sidebar{
+    position:fixed;left:0;top:0;
+    width:var(--sidebar-w);height:100vh;
+    background:var(--sidebar-bg);
+    border-right:1px solid var(--sidebar-border);
+    display:flex;flex-direction:column;
+    z-index:200;overflow-y:auto;overflow-x:hidden;
+    flex-shrink:0;
+  }
+  .sidebar-brand{
+    display:flex;align-items:center;gap:11px;
+    padding:18px 16px 16px;
+    border-bottom:1px solid var(--sidebar-border);
+    flex-shrink:0;
+  }
+  .brand-icon{
+    width:34px;height:34px;border-radius:9px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:17px;
+    background:linear-gradient(135deg,#3b82f6,#2563eb);
+    flex-shrink:0;
+  }
+  .sidebar-product-name{font-size:15px;font-weight:700;color:#f1f5f9;letter-spacing:-.01em}
+  .sidebar-tagline{font-size:10px;color:var(--sidebar-muted);margin-top:1px;font-weight:500;text-transform:uppercase;letter-spacing:.06em}
+  .sidebar-section-label{
+    font-size:10px;font-weight:700;color:var(--sidebar-muted);
+    text-transform:uppercase;letter-spacing:.08em;
+    padding:18px 16px 6px;
+  }
+  .sidebar-spacer{flex:1}
+  .sidebar-footer{
+    padding:10px 8px 14px;
+    border-top:1px solid var(--sidebar-border);
+    flex-shrink:0;
+  }
 
-    /* CARDS */
-    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:22px 24px}
-    .card-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:16px}
-    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-    .grid-auto{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
-    .grid-dept{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:18px}
+  /* NAV LINKS ─────────────────────────────────────────── */
+  .nav-link{
+    display:flex;align-items:center;gap:9px;
+    padding:8px 12px;
+    border-radius:7px;margin:0 8px 2px;
+    font-size:13px;font-weight:500;
+    border:none;cursor:pointer;
+    color:var(--sidebar-text);
+    background:transparent;
+    transition:background .13s,color .13s;
+    text-align:left;width:calc(100% - 16px);
+    white-space:nowrap;
+  }
+  .nav-link.active{color:var(--sidebar-active-text);background:var(--sidebar-active-bg)}
+  .nav-link:hover:not(.active){color:#e2e8f0;background:var(--sidebar-hover)}
+  .nav-icon{font-size:13px;width:16px;text-align:center;flex-shrink:0;opacity:.75}
+  .nav-link.active .nav-icon{opacity:1}
+  .nav-badge{font-size:11px;color:var(--muted);margin-left:auto;display:none}
 
-    /* STAT CARDS */
-    .stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;display:flex;flex-direction:column;gap:6px}
-    .stat-label{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
-    .stat-value{font-size:26px;font-weight:700;color:var(--text)}
-    .stat-sub{font-size:13px;font-weight:600}
+  /* USER CHIP (in sidebar footer) ─────────────────────── */
+  .user-chip{
+    display:flex;align-items:center;gap:9px;
+    background:rgba(255,255,255,.05);
+    border:1px solid var(--sidebar-border);
+    border-radius:8px;padding:9px 10px;
+    cursor:pointer;position:relative;user-select:none;
+    transition:background .13s;
+  }
+  .user-chip:hover{background:rgba(255,255,255,.09)}
+  .user-avatar{font-size:16px;flex-shrink:0}
+  .user-info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+  .user-role-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;align-self:flex-start}
+  .role-admin{background:rgba(239,68,68,.2);color:#f87171}
+  .role-operator{background:rgba(59,130,246,.2);color:#60a5fa}
+  .role-viewer{background:rgba(100,116,139,.2);color:#94a3b8}
 
-    /* BUTTONS */
-    .btn{padding:9px 18px;border-radius:9px;border:none;font-weight:600;font-size:13px;cursor:pointer;transition:opacity .15s;color:#fff}
-    .btn:hover{opacity:.85} .btn:disabled{opacity:.45;cursor:not-allowed}
-    .btn-primary{background:var(--purple)} .btn-success{background:#16a34a}
-    .btn-warning{background:#d97706}
-    .btn-danger{background:rgba(239,68,68,.15);color:var(--red)}
-    .btn-secondary{background:var(--border)}
-    .btn-sm{padding:5px 12px;font-size:12px}
+  /* MAIN CONTENT ─────────────────────────────────────── */
+  #main{
+    margin-left:var(--sidebar-w);
+    padding:28px 32px;
+    flex:1;
+    min-height:100vh;
+    background:var(--bg);
+    max-width:calc(1400px + var(--sidebar-w));
+  }
 
-    /* FORMS */
-    .form-group{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
-    .form-label{font-size:13px;font-weight:500;color:var(--sub)}
-    input,select,textarea{background:#0f1117;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%;transition:border-color .15s}
-    input:focus,select:focus,textarea:focus{border-color:var(--purple)}
-    textarea{resize:vertical;line-height:1.6}
-    .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    .form-hint{font-size:11px;color:#475569;margin-top:4px}
+  /* PAGES ────────────────────────────────────────────── */
+  .page{display:none;flex-direction:column;gap:22px}
+  .page.active{display:flex}
 
-    /* TABLES */
-    .tbl{width:100%;border-collapse:separate;border-spacing:0 8px}
-    .tbl th{text-align:left;padding:6px 14px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-    .tbl td{padding:13px 14px;background:var(--card);font-size:14px;color:var(--text);vertical-align:middle}
-    .tbl td:first-child{border-radius:10px 0 0 10px} .tbl td:last-child{border-radius:0 10px 10px 0}
-    .tbl-sub{font-size:12px;color:var(--muted);margin-top:2px}
-    .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  /* CARDS ────────────────────────────────────────────── */
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;padding:22px 24px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.03);
+  }
+  .card-title{
+    font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;
+  }
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .grid-auto{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+  .grid-dept{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-top:18px}
 
-    /* TARGETS */
-    .target-header,.target-row{display:grid;grid-template-columns:2fr 1.5fr 1fr 36px;gap:8px;align-items:center;padding:7px 0}
-    .target-header{border-bottom:1px solid var(--border);margin-bottom:4px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase}
-    .target-row{border-bottom:1px solid #0f1117}
-    .targets-scroll{max-height:300px;overflow-y:auto}
-    .del-btn{padding:2px 7px;border-radius:6px;border:none;background:rgba(239,68,68,.12);color:var(--red);font-size:12px;cursor:pointer}
+  /* STAT CARDS ────────────────────────────────────────── */
+  .stat-card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:12px;padding:20px 22px;
+    display:flex;flex-direction:column;gap:6px;
+    box-shadow:0 1px 3px rgba(0,0,0,.04);
+  }
+  .stat-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+  .stat-value{font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.02em}
+  .stat-sub{font-size:13px;font-weight:600}
 
-    /* RISKY USERS */
-    .risk-row{display:flex;align-items:center;gap:10px;background:#0f1117;border-radius:10px;padding:10px 12px;border:1px solid var(--border);margin-bottom:8px}
-    .risk-rank{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
-    .risk-info{flex:1;min-width:0}
-    .risk-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .risk-meta{font-size:11px;color:var(--muted)}
-    .risk-bar-track{margin-top:5px;height:4px;background:var(--border);border-radius:4px}
-    .risk-bar-fill{height:100%;border-radius:4px}
-    .risk-score-col{text-align:right;flex-shrink:0}
-    .risk-score-val{font-size:16px;font-weight:700}
-    .risk-score-lbl{font-size:10px;font-weight:600}
-    .risk-events{font-size:10px;color:var(--muted);margin-top:2px}
+  /* BUTTONS ───────────────────────────────────────────── */
+  .btn{
+    padding:8px 16px;border-radius:8px;border:none;
+    font-weight:600;font-size:13px;cursor:pointer;
+    transition:all .15s;color:#fff;letter-spacing:-.01em;
+  }
+  .btn:hover{filter:brightness(.94)}
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-primary{background:var(--primary)}
+  .btn-success{background:#10b981}
+  .btn-warning{background:#f59e0b}
+  .btn-danger{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+  .btn-danger:hover{background:rgba(239,68,68,.18)}
+  .btn-secondary{background:#f1f5f9;color:#374151;border:1px solid var(--border)}
+  .btn-secondary:hover{background:#e2e8f0}
+  .btn-sm{padding:5px 11px;font-size:12px;border-radius:6px}
 
-    /* DEPT CARDS */
-    .dept-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
-    .dept-name{font-size:13px;font-weight:600;margin-bottom:8px}
-    .dept-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
-    .dept-divider{border-top:1px solid var(--border);margin-top:6px;padding-top:6px}
+  /* FORMS ────────────────────────────────────────────── */
+  .form-group{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+  .form-label{font-size:13px;font-weight:600;color:#374151}
+  input,select,textarea{
+    background:#fff;
+    border:1.5px solid var(--border);
+    border-radius:8px;padding:9px 12px;
+    color:var(--text);font-size:14px;
+    outline:none;width:100%;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input::placeholder{color:#94a3b8}
+  input:focus,select:focus,textarea:focus{
+    border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(59,130,246,.1);
+  }
+  textarea{resize:vertical;line-height:1.65}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .form-hint{font-size:11px;color:#94a3b8;margin-top:3px;line-height:1.5}
+  select option{background:#fff;color:var(--text)}
 
-    /* FUNNEL PILLS */
-    .funnel-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .funnel-pill{display:flex;align-items:center;gap:6px;background:#0f1117;border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px}
-    .funnel-dot{width:8px;height:8px;border-radius:50%}
+  /* TABLES ───────────────────────────────────────────── */
+  .tbl{width:100%;border-collapse:collapse}
+  .tbl thead tr{border-bottom:1px solid var(--border)}
+  .tbl th{
+    text-align:left;padding:8px 14px;
+    font-size:11px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;
+  }
+  .tbl td{
+    padding:12px 14px;font-size:14px;color:var(--text);
+    border-bottom:1px solid var(--border);vertical-align:middle;
+  }
+  .tbl tbody tr:last-child td{border-bottom:none}
+  .tbl tbody tr:hover td{background:#f8fafc}
+  .tbl-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:600}
 
-    /* TOAST */
-    #toast{position:fixed;bottom:24px;right:24px;z-index:999;border-radius:10px;padding:12px 18px;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.4);max-width:380px;display:none}
+  /* TARGET LIST ───────────────────────────────────────── */
+  .target-header,.target-row{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr 36px;gap:8px;align-items:center;padding:8px 0}
+  .target-header{border-bottom:1.5px solid var(--border);margin-bottom:4px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .target-row{border-bottom:1px solid var(--border)}
+  .target-row:last-child{border-bottom:none}
+  .targets-scroll{max-height:300px;overflow-y:auto}
+  .del-btn{padding:3px 8px;border-radius:6px;border:none;background:rgba(239,68,68,.08);color:var(--red);font-size:12px;cursor:pointer;font-weight:600}
+  .del-btn:hover{background:rgba(239,68,68,.16)}
 
-    /* MISC */
-    .page-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px}
-    .page-title{font-size:24px;font-weight:700;color:var(--text)}
-    .page-sub{font-size:14px;color:var(--muted);margin-top:4px}
-    .notice{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:12px 16px;font-size:13px;color:#818cf8}
-    .empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
-    .empty-icon{font-size:40px;margin-bottom:12px}
-    .empty-title{font-weight:600;color:var(--sub);margin-bottom:8px}
-    .actions-row{display:flex;gap:10px;flex-wrap:wrap}
-    .meta-row{display:flex;justify-content:space-between;font-size:13px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px}
-    .meta-key{color:var(--muted)}
-    .meta-val{color:var(--text);font-weight:500;max-width:240px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .inline-flex{display:flex;align-items:center;gap:8px}
-    .select-sm{background:#0f1117;border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 8px;font-size:12px;width:auto}
-    .url-box{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
-    .url-label{color:#818cf8;font-weight:600}
-    .url-code{color:var(--sub);font-family:monospace}
-    .error-box{color:var(--red);background:rgba(239,68,68,.1);border-radius:8px;padding:10px 14px;font-size:13px}
-    .add-form{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-    .add-form input{flex:1 1 120px}
-    code{font-family:monospace;color:#818cf8}
-    .loading{color:var(--muted);text-align:center;padding:40px}
-    .section-sep{margin:4px 0 14px;font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  /* RISK ROWS ────────────────────────────────────────── */
+  .risk-row{display:flex;align-items:center;gap:10px;background:#f8fafc;border-radius:10px;padding:10px 12px;border:1px solid var(--border);margin-bottom:8px}
+  .risk-rank{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+  .risk-info{flex:1;min-width:0}
+  .risk-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .risk-meta{font-size:11px;color:var(--muted)}
+  .risk-bar-track{margin-top:5px;height:4px;background:var(--border);border-radius:4px}
+  .risk-bar-fill{height:100%;border-radius:4px}
+  .risk-score-col{text-align:right;flex-shrink:0}
+  .risk-score-val{font-size:16px;font-weight:700}
+  .risk-score-lbl{font-size:10px;font-weight:700}
+  .risk-events{font-size:10px;color:var(--muted);margin-top:2px}
 
-    /* SETTINGS */
-    .smtp-status{display:inline-flex;align-items:center;gap:7px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600}
-    .smtp-ok{background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.25)}
-    .smtp-warn{background:rgba(245,158,11,.12);color:#f59e0b;border:1px solid rgba(245,158,11,.25)}
-    .pw-wrap{position:relative}
-    .pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);
-               background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px}
-    .pw-toggle:hover{color:var(--text)}
-    .settings-section{display:flex;flex-direction:column;gap:4px;margin-bottom:20px}
-    .settings-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
-    .inline-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;
-                  padding:3px 10px;border-radius:20px}
+  /* DEPT CARDS ────────────────────────────────────────── */
+  .dept-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  .dept-name{font-size:13px;font-weight:600;margin-bottom:8px}
+  .dept-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+  .dept-divider{border-top:1px solid var(--border);margin-top:6px;padding-top:6px}
 
-    /* TEMPLATES */
-    .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px}
-    .tpl-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
-    .tpl-card:hover{border-color:#374151}
-    .tpl-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
-    .tpl-name{font-size:14px;font-weight:600;color:var(--text);flex:1}
-    .tpl-cat{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
-    .tpl-builtin-badge{font-size:10px;font-weight:600;color:#818cf8;background:rgba(99,102,241,.12);padding:2px 7px;border-radius:20px;border:1px solid rgba(99,102,241,.25)}
-    .tpl-desc{font-size:12px;color:var(--muted);line-height:1.5;flex:1}
-    .tpl-meta{font-size:11px;color:#475569;display:flex;flex-direction:column;gap:3px;background:#0f1117;border-radius:8px;padding:8px 10px}
-    .tpl-meta-row{display:flex;gap:6px} .tpl-meta-row span:first-child{color:#475569;min-width:44px}
-    .tpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+  /* FUNNEL PILLS ─────────────────────────────────────── */
+  .funnel-pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .funnel-pill{display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px}
+  .funnel-dot{width:8px;height:8px;border-radius:50%}
 
-    /* Category filter tabs */
-    .cat-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
-    .cat-tab{padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
-    .cat-tab.active,.cat-tab:hover{background:var(--purple);border-color:var(--purple);color:#fff}
+  /* TOAST ────────────────────────────────────────────── */
+  #toast{
+    position:fixed;bottom:24px;right:24px;z-index:9999;
+    border-radius:10px;padding:12px 18px;font-size:14px;
+    box-shadow:0 4px 24px rgba(0,0,0,.12);
+    max-width:380px;display:none;font-weight:500;
+    backdrop-filter:blur(8px);
+  }
 
-    /* Copy button */
-    .copy-btn{cursor:pointer;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:5px;background:transparent;color:var(--muted);transition:all .15s;white-space:nowrap}
-    .copy-btn:hover{border-color:#818cf8;color:#818cf8}
-    .url-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .url-row .url-code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* PAGE HEADERS ─────────────────────────────────────── */
+  .page-header{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px}
+  .page-title{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.02em}
+  .page-sub{font-size:14px;color:var(--muted);margin-top:4px}
 
-    /* MODAL */
-    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
-    .modal{background:var(--card);border:1px solid var(--border);border-radius:14px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;padding:28px 28px 24px}
-    .modal-title{font-size:18px;font-weight:700;color:var(--text);margin-bottom:20px}
-    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+  /* MISC ──────────────────────────────────────────────── */
+  .notice{background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.18);border-radius:10px;padding:12px 16px;font-size:13px;color:#2563eb}
+  .empty-state{text-align:center;padding:60px 20px;color:var(--muted)}
+  .empty-icon{font-size:40px;margin-bottom:12px}
+  .empty-title{font-weight:600;color:var(--sub);margin-bottom:8px}
+  .actions-row{display:flex;gap:10px;flex-wrap:wrap}
+  .meta-row{display:flex;justify-content:space-between;font-size:13px;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:8px}
+  .meta-key{color:var(--muted);font-weight:500}
+  .meta-val{color:var(--text);font-weight:600;max-width:240px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .inline-flex{display:flex;align-items:center;gap:8px}
+  .select-sm{background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:7px;padding:5px 9px;font-size:12px;width:auto;font-weight:500;cursor:pointer}
+  .select-sm:focus{border-color:var(--primary);outline:none}
+  .url-box{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+  .url-label{color:var(--primary);font-weight:600}
+  .url-code{color:var(--sub);font-family:monospace}
+  .error-box{color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:500}
+  .add-form{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .add-form input{flex:1 1 120px}
+  code{font-family:monospace;color:var(--primary);background:rgba(59,130,246,.07);padding:1px 5px;border-radius:4px}
+  .loading{color:var(--muted);text-align:center;padding:40px}
+  .section-sep{margin:4px 0 14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 
-    /* WARNING BANNER */
-    .warn-banner{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:12px 16px;font-size:13px;color:#fbbf24;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px}
-    .warn-banner strong{color:#f59e0b}
+  /* SETTINGS ─────────────────────────────────────────── */
+  .smtp-status{display:inline-flex;align-items:center;gap:7px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600}
+  .smtp-ok{background:rgba(16,185,129,.1);color:#059669;border:1px solid rgba(16,185,129,.25)}
+  .smtp-warn{background:rgba(245,158,11,.1);color:#d97706;border:1px solid rgba(245,158,11,.25)}
+  .pw-wrap{position:relative}
+  .pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px}
+  .pw-toggle:hover{color:var(--text)}
+  .settings-section{display:flex;flex-direction:column;gap:4px;margin-bottom:20px}
+  .settings-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .inline-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px}
 
-    /* TARGET TABLE — sent column */
-    .target-header,.target-row{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr 36px;gap:8px;align-items:center;padding:7px 0}
+  /* TEMPLATES ────────────────────────────────────────── */
+  .tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:16px}
+  .tpl-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:10px;transition:border-color .15s,box-shadow .15s;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+  .tpl-card:hover{border-color:#93c5fd;box-shadow:0 4px 12px rgba(59,130,246,.08)}
+  .tpl-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .tpl-name{font-size:14px;font-weight:700;color:var(--text);flex:1}
+  .tpl-cat{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.04em;white-space:nowrap;flex-shrink:0}
+  .tpl-builtin-badge{font-size:10px;font-weight:600;color:var(--primary);background:rgba(59,130,246,.1);padding:2px 7px;border-radius:20px;border:1px solid rgba(59,130,246,.2)}
+  .tpl-desc{font-size:12px;color:var(--muted);line-height:1.5;flex:1}
+  .tpl-meta{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;background:#f8fafc;border-radius:8px;padding:8px 10px}
+  .tpl-meta-row{display:flex;gap:6px} .tpl-meta-row span:first-child{color:var(--muted);min-width:44px}
+  .tpl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
 
-    /* SCHEDULED STATUS */
-    .pill-scheduled{color:#f59e0b;background:rgba(245,158,11,.12)}
+  /* CATEGORY FILTER TABS ─────────────────────────────── */
+  .cat-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .cat-tab{padding:5px 14px;border-radius:20px;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+  .cat-tab.active,.cat-tab:hover{background:var(--primary);border-color:var(--primary);color:#fff}
 
-    /* AI MODAL */
-    .ai-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px}
-    .ai-tab{padding:8px 16px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s}
-    .ai-tab.active{color:#818cf8;border-bottom-color:#818cf8}
-    .ai-tab-pane{display:none}
-    .ai-tab-pane.active{display:block}
-    .ai-preview-field{background:#0f1117;border-radius:8px;padding:12px 14px;margin-bottom:10px}
-    .ai-preview-label{font-size:10px;font-weight:700;color:#818cf8;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
-    .ai-preview-val{font-size:13px;color:var(--sub);line-height:1.5;word-break:break-word;white-space:pre-wrap;max-height:120px;overflow-y:auto}
-    .ai-provider-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.25);border-radius:8px;padding:8px 14px;font-size:12px;color:#818cf8;margin-bottom:14px;width:100%}
-    .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#818cf8;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .ai-model-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-    .ai-key-wrap{position:relative}
-    .ai-key-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px}
-    .ai-key-toggle:hover{color:var(--text)}
+  /* COPY BUTTON ───────────────────────────────────────── */
+  .copy-btn{cursor:pointer;font-size:11px;padding:3px 8px;border:1.5px solid var(--border);border-radius:5px;background:#fff;color:var(--muted);transition:all .15s;white-space:nowrap;font-weight:500}
+  .copy-btn:hover{border-color:var(--primary);color:var(--primary)}
+  .url-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .url-row .url-code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-    /* LOGIN OVERLAY */
-    #login-overlay{position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center}
-    .login-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:20px}
-    .login-brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
-    .login-brand-icon{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:26px}
-    .login-title{font-size:22px;font-weight:700;color:var(--text)}
-    .login-sub{font-size:13px;color:var(--muted);margin-top:2px}
-    .login-error{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--red);border-radius:8px;padding:10px 14px;font-size:13px;display:none}
-    /* USER CHIP */
-    .user-chip{display:flex;align-items:center;gap:8px;background:var(--border);border-radius:8px;padding:5px 12px;font-size:13px;margin-left:auto;cursor:pointer;position:relative;user-select:none}
-    .user-chip:hover{background:#2a2f44}
-    .user-role-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em}
-    .role-admin{background:rgba(239,68,68,.15);color:#ef4444}
-    .role-operator{background:rgba(99,102,241,.15);color:#818cf8}
-    .role-viewer{background:rgba(100,116,139,.15);color:#94a3b8}
-    /* USERS TABLE */
-    .users-tbl{width:100%;border-collapse:separate;border-spacing:0 6px}
-    .users-tbl th{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:4px 12px;text-transform:uppercase;letter-spacing:.05em}
-    .users-tbl td{padding:10px 12px;background:#0f1117;font-size:13px;vertical-align:middle}
-    .users-tbl td:first-child{border-radius:8px 0 0 8px} .users-tbl td:last-child{border-radius:0 8px 8px 0}
-    /* RISK PAGE */
-    .risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-    .risk-matrix-cell{border-radius:8px;padding:12px;text-align:center;font-size:12px;font-weight:600;cursor:default;transition:transform .12s}
-    .risk-matrix-cell:hover{transform:scale(1.04)}
-    /* ACTIVITY FEED */
-    .activity-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
-    .activity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
-    .activity-text{font-size:13px;color:var(--text);flex:1}
-    .activity-time{font-size:11px;color:var(--muted);flex-shrink:0;white-space:nowrap}
-    /* SETTINGS TABS */
-    .settings-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:22px;flex-wrap:wrap}
-    .settings-tab{padding:9px 18px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .15s;white-space:nowrap}
-    .settings-tab.active{color:#818cf8;border-bottom-color:#818cf8}
-    .settings-tab-pane{display:none}
-    .settings-tab-pane.active{display:flex;flex-direction:column;gap:22px}
-    /* CODE BLOCKS IN SCALE TAB */
-    pre{margin:0;white-space:pre;overflow-x:auto;tab-size:2}
+  /* MODAL ────────────────────────────────────────────── */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:16px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;padding:28px 28px 24px;box-shadow:0 20px 60px rgba(0,0,0,.12)}
+  .modal-title{font-size:17px;font-weight:700;color:var(--text);margin-bottom:20px}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+
+  /* WARNING BANNER ───────────────────────────────────── */
+  .warn-banner{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px}
+  .warn-banner strong{color:#d97706}
+
+  /* AI MODAL ─────────────────────────────────────────── */
+  .ai-tabs{display:flex;gap:0;border-bottom:1.5px solid var(--border);margin-bottom:16px}
+  .ai-tab{padding:8px 16px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+  .ai-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+  .ai-tab-pane{display:none}
+  .ai-tab-pane.active{display:block}
+  .ai-preview-field{background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+  .ai-preview-label{font-size:10px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
+  .ai-preview-val{font-size:13px;color:var(--text);line-height:1.5;word-break:break-word;white-space:pre-wrap;max-height:120px;overflow-y:auto}
+  .ai-provider-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.18);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--primary);margin-bottom:14px;width:100%;font-weight:500}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,.1);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .ai-model-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .ai-key-wrap{position:relative}
+  .ai-key-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 4px}
+  .ai-key-toggle:hover{color:var(--text)}
+
+  /* LOGIN OVERLAY ────────────────────────────────────── */
+  #login-overlay{position:fixed;inset:0;background:#0f172a;z-index:9999;display:flex;align-items:center;justify-content:center}
+  .login-box{background:#1e293b;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:40px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:20px;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+  .login-brand{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+  .login-brand-icon{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:26px}
+  .login-title{font-size:22px;font-weight:700;color:#f1f5f9}
+  .login-sub{font-size:13px;color:#64748b;margin-top:2px}
+  .login-error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:#f87171;border-radius:8px;padding:10px 14px;font-size:13px;display:none}
+  #login-overlay input{background:#0f172a;border:1.5px solid rgba(255,255,255,.1);color:#f1f5f9}
+  #login-overlay input::placeholder{color:#475569}
+  #login-overlay input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+  #login-overlay .form-label{color:#94a3b8}
+  #login-overlay .btn-primary{background:linear-gradient(135deg,#3b82f6,#2563eb);font-size:15px;padding:12px}
+  #login-overlay .pw-toggle{color:#475569}
+
+  /* USERS TABLE ─────────────────────────────────────── */
+  .users-tbl{width:100%;border-collapse:collapse}
+  .users-tbl th{font-size:11px;font-weight:700;color:var(--muted);text-align:left;padding:8px 12px;text-transform:uppercase;letter-spacing:.06em;border-bottom:1.5px solid var(--border)}
+  .users-tbl td{padding:10px 12px;font-size:13px;vertical-align:middle;border-bottom:1px solid var(--border)}
+  .users-tbl tbody tr:hover td{background:#f8fafc}
+
+  /* RISK PAGE ────────────────────────────────────────── */
+  .risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .risk-matrix-cell{border-radius:8px;padding:12px;text-align:center;font-size:12px;font-weight:600;cursor:default;transition:transform .12s}
+  .risk-matrix-cell:hover{transform:scale(1.04)}
+
+  /* ACTIVITY FEED ─────────────────────────────────────── */
+  .activity-item{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .activity-item:last-child{border-bottom:none}
+  .activity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+  .activity-text{font-size:13px;color:var(--text);flex:1}
+  .activity-time{font-size:11px;color:var(--muted);flex-shrink:0;white-space:nowrap}
+
+  /* SETTINGS / ANALYTICS TABS ─────────────────────────── */
+  .settings-tabs,.ai-tabs{display:flex;gap:0;border-bottom:1.5px solid var(--border);margin-bottom:22px;flex-wrap:wrap}
+  .settings-tab,.risk-tab{
+    padding:9px 16px;border:none;background:transparent;
+    color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;
+    border-bottom:2px solid transparent;margin-bottom:-2px;
+    transition:all .15s;white-space:nowrap;
+  }
+  .settings-tab.active,.risk-tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+  .settings-tab-pane{display:none}
+  .settings-tab-pane.active{display:flex;flex-direction:column;gap:22px}
+
+  /* PILL STATUS ─────────────────────────────────────── */
+  .pill-active{color:#059669;background:rgba(16,185,129,.1)}
+  .pill-completed{color:#2563eb;background:rgba(59,130,246,.1)}
+  .pill-draft{color:#64748b;background:rgba(100,116,139,.1)}
+  .pill-paused{color:#d97706;background:rgba(245,158,11,.1)}
+  .pill-scheduled{color:#d97706;background:rgba(245,158,11,.1)}
+
+  /* CODE BLOCKS ─────────────────────────────────────── */
+  pre{margin:0;white-space:pre;overflow-x:auto;tab-size:2;font-size:12px;color:var(--text)}
+
+  /* IFRAME / PREVIEW ─────────────────────────────────── */
+  iframe{border:none;border-radius:8px}
+
+  /* RESPONSIVE ────────────────────────────────────────── */
+  @media(max-width:768px){
+    .sidebar{transform:translateX(-100%)}
+    #main{margin-left:0}
+    .grid-2,.form-row{grid-template-columns:1fr}
+  }
+
   </style>
 </head>
 <body>
+
+
 
 <!-- ═══ LOGIN OVERLAY ════════════════════════════════════════ -->
 <div id="login-overlay">
@@ -265,36 +445,60 @@
   </div>
 </div>
 
-<!-- ═══ NAVBAR ════════════════════════════════════════════════ -->
-<nav id="navbar">
-  <div class="brand">
+<!-- ═══ APP SHELL ══════════════════════════════════════════════ -->
+<div class="app-shell">
+
+<!-- SIDEBAR ──────────────────────────────────────────────── -->
+<aside id="navbar" class="sidebar">
+
+  <!-- Brand -->
+  <div class="sidebar-brand">
     <div class="brand-icon">🎣</div>
-    PhishSim
-  </div>
-  <button class="nav-link active" id="nav-dashboard"  onclick="navigate('dashboard')">📊 Dashboard</button>
-  <button class="nav-link"        id="nav-campaigns"  onclick="navigate('campaigns')">📧 Campaigns</button>
-  <button class="nav-link"        id="nav-analytics"  onclick="navigate('analytics')">📈 Analytics</button>
-  <button class="nav-link"        id="nav-risk"       onclick="navigate('risk')">🛡️ Risk Engine</button>
-  <button class="nav-link"        id="nav-threat"     onclick="navigate('threat')">🌐 Threat Intel</button>
-  <button class="nav-link"        id="nav-autonomy"   onclick="navigate('autonomy')">🤖 Autonomy</button>
-  <button class="nav-link"        id="nav-compliance" onclick="navigate('compliance')">📋 Compliance</button>
-  <button class="nav-link"        id="nav-templates"  onclick="navigate('templates')">📄 Templates</button>
-  <button class="nav-link"        id="nav-settings"   onclick="navigate('settings')">⚙️ Settings</button>
-  <div id="nav-smtp-badge" style="display:none"></div>
-  <div id="user-chip-wrap" class="user-chip" style="display:none" onclick="toggleUserMenu()">
-    <span>👤</span>
-    <span id="user-chip-name" style="font-weight:600">—</span>
-    <span id="user-chip-role" class="user-role-badge">—</span>
-    <span style="color:var(--muted);font-size:11px">▾</span>
-    <div id="user-menu" style="display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px;min-width:160px;z-index:300;box-shadow:0 4px 24px rgba(0,0,0,.5)">
-      <div id="user-menu-admin" style="display:none">
-        <button onclick="navigate('settings');setTimeout(()=>showSettingsTab('users'),200);closeUserMenu()" style="width:100%;text-align:left;background:none;border:none;color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;display:block">👥 Manage Users</button>
-      </div>
-      <button onclick="doLogout()" style="width:100%;text-align:left;background:none;border:none;color:var(--red);padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;display:block">🚪 Log Out</button>
+    <div>
+      <div class="sidebar-product-name">PhishSim</div>
+      <div class="sidebar-tagline">Security Platform</div>
     </div>
   </div>
-</nav>
 
+  <!-- Nav groups -->
+  <div class="sidebar-section-label">Overview</div>
+  <button class="nav-link active" id="nav-dashboard"  onclick="navigate('dashboard')"><span class="nav-icon">◈</span> Dashboard</button>
+  <button class="nav-link"        id="nav-campaigns"  onclick="navigate('campaigns')"><span class="nav-icon">✉</span> Campaigns</button>
+  <button class="nav-link"        id="nav-analytics"  onclick="navigate('analytics')"><span class="nav-icon">▲</span> Analytics</button>
+
+  <div class="sidebar-section-label">Intelligence</div>
+  <button class="nav-link" id="nav-risk"       onclick="navigate('risk')"><span class="nav-icon">⬡</span> Risk Engine</button>
+  <button class="nav-link" id="nav-threat"     onclick="navigate('threat')"><span class="nav-icon">◉</span> Threat Intel</button>
+  <button class="nav-link" id="nav-autonomy"   onclick="navigate('autonomy')"><span class="nav-icon">◎</span> Autonomy</button>
+  <button class="nav-link" id="nav-compliance" onclick="navigate('compliance')"><span class="nav-icon">◫</span> Compliance</button>
+
+  <div class="sidebar-section-label">Library</div>
+  <button class="nav-link" id="nav-templates" onclick="navigate('templates')"><span class="nav-icon">◱</span> Templates</button>
+  <button class="nav-link" id="nav-settings"  onclick="navigate('settings')"><span class="nav-icon">◈</span> Settings</button>
+
+  <div id="nav-smtp-badge" style="display:none"></div>
+
+  <!-- Sidebar footer: user chip -->
+  <div class="sidebar-spacer"></div>
+  <div class="sidebar-footer">
+    <div id="user-chip-wrap" class="user-chip" style="display:none" onclick="toggleUserMenu()">
+      <div class="user-avatar">👤</div>
+      <div class="user-info">
+        <span id="user-chip-name" style="font-weight:600;font-size:13px;color:#f1f5f9">—</span>
+        <span id="user-chip-role" class="user-role-badge">—</span>
+      </div>
+      <span style="color:#475569;font-size:11px;margin-left:auto">▾</span>
+      <div id="user-menu" style="display:none;position:absolute;bottom:calc(100% + 8px);left:0;right:0;background:#1e293b;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:6px;z-index:300;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+        <div id="user-menu-admin" style="display:none">
+          <button onclick="navigate('settings');setTimeout(()=>showSettingsTab('users'),200);closeUserMenu()" style="width:100%;text-align:left;background:none;border:none;color:#cbd5e1;padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;display:block">👥 Manage Users</button>
+        </div>
+        <button onclick="doLogout()" style="width:100%;text-align:left;background:none;border:none;color:#f87171;padding:8px 10px;border-radius:6px;font-size:13px;cursor:pointer;display:block">🚪 Sign Out</button>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- CONTENT ───────────────────────────────────────────────── -->
 <main id="main">
 
 <!-- ═══ PAGE: DASHBOARD ═══════════════════════════════════════ -->
@@ -467,22 +671,22 @@
     <div class="card">
       <div class="card-title">📖 RISK SCORE METHODOLOGY</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:4px">
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-left:3px solid #f59e0b">
           <div style="font-size:20px;font-weight:900;color:#f59e0b">+1</div>
           <div style="font-size:13px;font-weight:600;margin:4px 0">Email Opened</div>
           <div style="font-size:12px;color:var(--muted)">Tracking pixel loaded — indicates curiosity or low vigilance</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-left:3px solid #ef4444">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-left:3px solid #ef4444">
           <div style="font-size:20px;font-weight:900;color:#ef4444">+3</div>
           <div style="font-size:13px;font-weight:600;margin:4px 0">Link Clicked</div>
           <div style="font-size:12px;color:var(--muted)">Visited the phishing page — higher-risk behaviour, poor link judgement</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-left:3px solid #dc2626">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-left:3px solid #dc2626">
           <div style="font-size:20px;font-weight:900;color:#dc2626">+5</div>
           <div style="font-size:13px;font-weight:600;margin:4px 0">Credentials Submitted</div>
           <div style="font-size:12px;color:var(--muted)">Entered data on fake login page — highest severity, immediate training needed</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-left:3px solid #22c55e">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-left:3px solid #22c55e">
           <div style="font-size:20px;font-weight:900;color:#22c55e">−2</div>
           <div style="font-size:13px;font-weight:600;margin:4px 0">Reported as Phishing</div>
           <div style="font-size:12px;color:var(--muted)">User flagged the email — positive security awareness behaviour</div>
@@ -502,12 +706,12 @@
   </div>
   <div id="create-error" class="error-box" style="display:none"></div>
 
-  <div class="card" style="background:rgba(99,102,241,.06);border-color:rgba(99,102,241,.2)">
-    <div class="section-sep" style="color:#818cf8">⚡ QUICK START FROM TEMPLATE</div>
+  <div class="card" style="background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.2)">
+    <div class="section-sep" style="color:#3b82f6">⚡ QUICK START FROM TEMPLATE</div>
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
       <div class="form-group" style="flex:1;margin:0">
         <label class="form-label">Pick a template (optional)</label>
-        <select id="c-template-pick" onchange="applyTemplate(this.value)" style="border-color:rgba(99,102,241,.3)">
+        <select id="c-template-pick" onchange="applyTemplate(this.value)" style="border-color:rgba(59,130,246,.3)">
           <option value="">— Start from scratch —</option>
         </select>
       </div>
@@ -645,14 +849,14 @@ IT Security Team</textarea>
         <span style="font-size:12px;color:var(--sub)">Email Delivery Progress</span>
         <span id="progress-pct-label" style="font-size:13px;font-weight:700;color:#22c55e">—</span>
       </div>
-      <div style="background:#1e2232;border-radius:6px;height:10px;overflow:hidden">
+      <div style="background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden">
         <div id="progress-bar-sent" style="height:100%;background:linear-gradient(90deg,#22c55e,#16a34a);border-radius:6px;transition:width .4s;width:0%"></div>
       </div>
       <div style="display:flex;gap:18px;margin-top:8px;flex-wrap:wrap">
         <span id="progress-stat-sent"     style="font-size:12px;color:#22c55e">✅ 0 sent</span>
         <span id="progress-stat-failed"   style="font-size:12px;color:#ef4444">❌ 0 failed</span>
         <span id="progress-stat-pending"  style="font-size:12px;color:var(--muted)">⏳ 0 pending</span>
-        <span id="progress-stat-rate"     style="font-size:12px;color:#818cf8">⚡ —/min</span>
+        <span id="progress-stat-rate"     style="font-size:12px;color:#3b82f6">⚡ —/min</span>
       </div>
     </div>
     <div class="card-title" style="margin-bottom:10px">Engagement Funnel</div>
@@ -922,8 +1126,8 @@ IT Security Team</textarea>
 
   <div id="stab-pane-infra" class="settings-tab-pane active">
   <!-- ── INFRASTRUCTURE CARD ───────────────────────────────── -->
-  <div class="card" style="border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.04)">
-    <div class="section-sep" style="color:#818cf8">🌐 INFRASTRUCTURE — PUBLIC SERVER URL</div>
+  <div class="card" style="border-color:rgba(59,130,246,.3);background:rgba(99,102,241,.04)">
+    <div class="section-sep" style="color:#3b82f6">🌐 INFRASTRUCTURE — PUBLIC SERVER URL</div>
 
     <div id="infra-scheduler-banner" style="display:none;margin-bottom:14px"></div>
 
@@ -951,23 +1155,23 @@ IT Security Team</textarea>
       </div>
     </div>
 
-    <div id="infra-url-preview" style="margin-top:14px;display:none;background:#0f1117;border-radius:8px;padding:12px 14px">
-      <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px">TRACKING LINKS WILL USE:</div>
+    <div id="infra-url-preview" style="margin-top:14px;display:none;background:#f8fafc;border-radius:8px;padding:12px 14px">
+      <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">TRACKING LINKS WILL USE:</div>
       <div id="infra-url-lines" style="font-size:12px;color:var(--sub);font-family:monospace;line-height:2"></div>
     </div>
 
     <!-- ngrok quick-start -->
     <div style="margin-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">NGROK — FREE PUBLIC URL</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           1. Download <strong style="color:var(--text)">ngrok.com</strong><br>
-          2. Run: <code style="color:#818cf8">ngrok http 8000</code><br>
+          2. Run: <code style="color:#3b82f6">ngrok http 8000</code><br>
           3. Copy the <strong style="color:var(--text)">https://…ngrok-free.app</strong> URL<br>
           4. Paste it above &amp; Save
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">VPS — STABLE OPTION ($5/mo)</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           DigitalOcean / Linode / Vultr<br>
@@ -976,7 +1180,7 @@ IT Security Team</textarea>
           Best for multi-day campaigns
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">SCHEDULER STATUS</div>
         <div id="infra-sched-detail" style="font-size:12px;color:var(--sub);line-height:1.7">
           Checking…
@@ -1048,31 +1252,31 @@ IT Security Team</textarea>
     <div style="border-top:1px solid var(--border);margin-top:18px;padding-top:18px">
       <div class="section-sep" style="margin-bottom:12px">🚀 DON'T HAVE SMTP YET? FREE SETUP WITH BREVO</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 1 — CREATE ACCOUNT</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 1 — CREATE ACCOUNT</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.6">
             Go to <strong style="color:var(--text)">brevo.com</strong> → Sign up free<br>
             No credit card · 300 emails/day
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 2 — GET SMTP KEY</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 2 — GET SMTP KEY</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.6">
             Inside Brevo:<br>
             <strong style="color:var(--text)">Settings → SMTP &amp; API</strong><br>
             Copy the <strong style="color:var(--text)">SMTP Key</strong>
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 3 — FILL THE FORM</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 3 — FILL THE FORM</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.6">
             Host: <strong style="color:var(--text)">smtp-relay.brevo.com</strong><br>
             Port: <strong style="color:var(--text)">587</strong> · Username: login email<br>
             Password: SMTP Key from Step 2
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 4 — SAVE &amp; TEST</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 4 — SAVE &amp; TEST</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.6">
             Click <strong style="color:var(--text)">Save</strong> then <strong style="color:var(--text)">Test Connection</strong><br>
             Green = ready to send campaigns
@@ -1094,8 +1298,8 @@ IT Security Team</textarea>
 
   <div id="stab-pane-ai" class="settings-tab-pane">
   <!-- ── AI ENGINE CARD ──────────────────────────────────────── -->
-  <div class="card" style="border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.04)">
-    <div class="section-sep" style="color:#818cf8">🤖 AI ENGINE — LLM CONFIGURATION</div>
+  <div class="card" style="border-color:rgba(59,130,246,.3);background:rgba(99,102,241,.04)">
+    <div class="section-sep" style="color:#3b82f6">🤖 AI ENGINE — LLM CONFIGURATION</div>
     <div class="notice" style="margin-bottom:18px">
       💡 Configure an AI language model to auto-generate phishing email templates from a short description.
       Choose from <strong>Anthropic Claude</strong>, <strong>OpenAI GPT</strong>, or <strong>Ollama</strong> (free, runs locally).
@@ -1145,24 +1349,24 @@ IT Security Team</textarea>
 
     <!-- Ollama install guide -->
     <div id="ai-ollama-guide" style="margin-top:18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 1 — INSTALL OLLAMA</div>
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 1 — INSTALL OLLAMA</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           Go to <strong style="color:var(--text)">ollama.com</strong><br>
           Download &amp; install for Windows/Mac/Linux<br>
           It runs as a local service on port 11434
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 2 — PULL A MODEL</div>
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 2 — PULL A MODEL</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           Open terminal and run:<br>
-          <code style="color:#818cf8">ollama pull llama3.2</code><br>
-          or <code style="color:#818cf8">ollama pull mistral</code>
+          <code style="color:#3b82f6">ollama pull llama3.2</code><br>
+          or <code style="color:#3b82f6">ollama pull mistral</code>
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-        <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">STEP 3 — SAVE &amp; TEST</div>
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">STEP 3 — SAVE &amp; TEST</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           Click <strong style="color:var(--text)">Refresh Models</strong> to load installed models<br>
           Select a model, click <strong style="color:var(--text)">Test Connection</strong><br>
@@ -1183,30 +1387,30 @@ IT Security Team</textarea>
   </div>
 
   <div class="card" style="background:rgba(99,102,241,.04);border-color:rgba(99,102,241,.2)">
-    <div class="section-sep" style="color:#818cf8">🔐 SSO / MFA — INTEGRATION GUIDE</div>
+    <div class="section-sep" style="color:#3b82f6">🔐 SSO / MFA — INTEGRATION GUIDE</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">OIDC / OAuth2 SSO</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           Google, Azure AD, Okta via OpenID Connect.<br>
-          <code style="color:#818cf8">pip install authlib python-jose</code><br>
-          Add <code style="color:#818cf8">/api/auth/oidc/*</code> routes in auth.py
+          <code style="color:#3b82f6">pip install authlib python-jose</code><br>
+          Add <code style="color:#3b82f6">/api/auth/oidc/*</code> routes in auth.py
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">TOTP / MFA</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           TOTP 2FA (Google Authenticator compatible).<br>
-          <code style="color:#818cf8">pip install pyotp qrcode</code><br>
-          Add <code style="color:#818cf8">totp_secret</code> to User model + setup endpoint.
+          <code style="color:#3b82f6">pip install pyotp qrcode</code><br>
+          Add <code style="color:#3b82f6">totp_secret</code> to User model + setup endpoint.
         </div>
       </div>
-      <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+      <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
         <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">SAML 2.0</div>
         <div style="font-size:12px;color:var(--sub);line-height:1.7">
           Enterprise: Okta, ADFS, PingIdentity.<br>
-          <code style="color:#818cf8">pip install python3-saml</code><br>
-          Requires <code style="color:#818cf8">xmlsec1</code> system library.
+          <code style="color:#3b82f6">pip install python3-saml</code><br>
+          Requires <code style="color:#3b82f6">xmlsec1</code> system library.
         </div>
       </div>
     </div>
@@ -1226,14 +1430,14 @@ IT Security Team</textarea>
 
     <!-- Platform-neutral deployment -->
     <div class="card" style="border-color:rgba(99,102,241,.25);background:rgba(99,102,241,.04)">
-      <div class="section-sep" style="color:#818cf8">🐳 PLATFORM-NEUTRAL DEPLOYMENT — DOCKER</div>
+      <div class="section-sep" style="color:#3b82f6">🐳 PLATFORM-NEUTRAL DEPLOYMENT — DOCKER</div>
       <div class="notice" style="margin-bottom:18px">
         Docker makes PhishSim run identically on Windows, macOS, Linux, any cloud provider (AWS, GCP, Azure, Hetzner, DigitalOcean), or on-premise.
         One <code>docker compose up</code> command starts everything.
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px">📄 docker-compose.yml</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">📄 docker-compose.yml</div>
           <pre style="font-size:11px;color:#94a3b8;line-height:1.7;overflow-x:auto">services:
   phishsim:
     build: .
@@ -1256,8 +1460,8 @@ IT Security Team</textarea>
 volumes:
   pgdata:</pre>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px">📄 Dockerfile</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">📄 Dockerfile</div>
           <pre style="font-size:11px;color:#94a3b8;line-height:1.7;overflow-x:auto">FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
@@ -1269,15 +1473,15 @@ CMD ["uvicorn", "main:app",
      "--port", "8000",
      "--workers", "4"]</pre>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:8px">🚀 Deploy Steps</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">🚀 Deploy Steps</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.9">
             1. Install Docker &amp; Docker Compose<br>
             2. Copy project to server<br>
-            3. <code style="color:#818cf8">docker compose up -d</code><br>
+            3. <code style="color:#3b82f6">docker compose up -d</code><br>
             4. Configure Nginx reverse proxy<br>
             5. Get SSL via Let's Encrypt<br>
-            6. Set <code style="color:#818cf8">base_url</code> in Settings → Infrastructure
+            6. Set <code style="color:#3b82f6">base_url</code> in Settings → Infrastructure
           </div>
         </div>
       </div>
@@ -1304,9 +1508,9 @@ CMD ["uvicorn", "main:app",
             ✅ Proper connection pooling<br>
             ✅ Full-text search, JSONB for extra_data<br>
             <br>
-            <strong style="color:var(--text)">Migration:</strong> Change <code style="color:#818cf8">database.py</code> connection string:<br>
-            <code style="color:#818cf8;font-size:11px">postgresql+psycopg2://user:pass@db:5432/phishsim</code><br>
-            Install: <code style="color:#818cf8">pip install psycopg2-binary</code>
+            <strong style="color:var(--text)">Migration:</strong> Change <code style="color:#3b82f6">database.py</code> connection string:<br>
+            <code style="color:#3b82f6;font-size:11px">postgresql+psycopg2://user:pass@db:5432/phishsim</code><br>
+            Install: <code style="color:#3b82f6">pip install psycopg2-binary</code>
           </div>
         </div>
       </div>
@@ -1330,12 +1534,12 @@ CMD ["uvicorn", "main:app",
               <td style="color:#22c55e">~€4–8</td>
             </tr>
             <tr>
-              <td><span class="pill" style="background:rgba(99,102,241,.12);color:#818cf8">Medium</span></td>
+              <td><span class="pill" style="background:rgba(99,102,241,.12);color:#3b82f6">Medium</span></td>
               <td>500 – 5,000</td>
               <td>VPS (4 vCPU, 8 GB RAM) + PostgreSQL</td>
               <td>PostgreSQL</td>
               <td>4–8 workers + Gunicorn</td>
-              <td style="color:#818cf8">~€15–30</td>
+              <td style="color:#3b82f6">~€15–30</td>
             </tr>
             <tr>
               <td><span class="pill" style="background:rgba(245,158,11,.12);color:#f59e0b">Large</span></td>
@@ -1362,7 +1566,7 @@ CMD ["uvicorn", "main:app",
     <div class="card">
       <div class="section-sep">📮 HIGH-VOLUME EMAIL SENDING — ASYNC WORKERS</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
           <div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:6px">CURRENT (SYNC)</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.7">
             Emails sent one-by-one inside the API request.<br>
@@ -1370,25 +1574,25 @@ CMD ["uvicorn", "main:app",
             Times out for large campaigns.
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
           <div style="font-size:11px;font-weight:700;color:#22c55e;margin-bottom:6px">RECOMMENDED: CELERY + REDIS</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.7">
-            <code style="color:#818cf8">pip install celery redis</code><br>
+            <code style="color:#3b82f6">pip install celery redis</code><br>
             Move SMTP send to async tasks.<br>
             Scale workers independently.<br>
             Handles 50,000+ emails/hour.
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">NGINX REVERSE PROXY</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">NGINX REVERSE PROXY</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.7">
             Nginx in front of uvicorn handles SSL termination, static file serving, and rate limiting — protects from load spikes.
           </div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px">
-          <div style="font-size:11px;font-weight:700;color:#818cf8;margin-bottom:6px">CONNECTION POOLING</div>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:6px">CONNECTION POOLING</div>
           <div style="font-size:12px;color:var(--sub);line-height:1.7">
-            Add <code style="color:#818cf8">pool_size=20, max_overflow=40</code> to SQLAlchemy engine in <code style="color:#818cf8">database.py</code> for high-concurrency tracking.
+            Add <code style="color:#3b82f6">pool_size=20, max_overflow=40</code> to SQLAlchemy engine in <code style="color:#3b82f6">database.py</code> for high-concurrency tracking.
           </div>
         </div>
       </div>
@@ -1398,22 +1602,22 @@ CMD ["uvicorn", "main:app",
     <div class="card">
       <div class="section-sep">☁️ RECOMMENDED CLOUD PROVIDERS — COST vs SCALE</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-top:3px solid #22c55e">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-top:3px solid #22c55e">
           <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">🏆 Hetzner Cloud</div>
           <div style="font-size:18px;font-weight:900;color:#22c55e">€4–8/mo</div>
           <div style="font-size:12px;color:var(--sub);margin-top:6px;line-height:1.6">Best price/performance ratio. EU data centres. CX11 (2 vCPU/2 GB) handles up to 1,000 targets/campaign.</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-top:3px solid #818cf8">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-top:3px solid #818cf8">
           <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">DigitalOcean</div>
-          <div style="font-size:18px;font-weight:900;color:#818cf8">$6–12/mo</div>
+          <div style="font-size:18px;font-weight:900;color:#3b82f6">$6–12/mo</div>
           <div style="font-size:12px;color:var(--sub);margin-top:6px;line-height:1.6">Excellent docs, managed PostgreSQL add-on, one-click Docker. Good for 500–5,000 targets.</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-top:3px solid #0ea5e9">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-top:3px solid #0ea5e9">
           <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">Linode / Akamai</div>
           <div style="font-size:18px;font-weight:900;color:#0ea5e9">$5–10/mo</div>
           <div style="font-size:12px;color:var(--sub);margin-top:6px;line-height:1.6">Reliable, global datacenters, generous bandwidth. Similar to DigitalOcean at slightly better rates.</div>
         </div>
-        <div style="background:#0f1117;border-radius:10px;padding:14px 16px;border-top:3px solid #f59e0b">
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 16px;border-top:3px solid #f59e0b">
           <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">AWS / GCP / Azure</div>
           <div style="font-size:18px;font-weight:900;color:#f59e0b">$15–50+/mo</div>
           <div style="font-size:12px;color:var(--sub);margin-top:6px;line-height:1.6">Enterprise-grade. Use when compliance (SOC2, ISO27001) or internal corporate policy requires hyperscalers.</div>
@@ -1559,7 +1763,7 @@ CMD ["uvicorn", "main:app",
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="saveNotifConfig()">💾 Save Notification Settings</button>
-        <button class="btn" onclick="testNotification()" style="background:rgba(99,102,241,.15);color:#818cf8;border-color:#818cf8">🧪 Send Test</button>
+        <button class="btn" onclick="testNotification()" style="background:rgba(99,102,241,.15);color:#3b82f6;border-color:#3b82f6">🧪 Send Test</button>
         <span id="notif-save-msg" style="margin-left:4px;font-size:13px;color:#4ade80;align-self:center;display:none">Saved!</span>
       </div>
     </div>
@@ -1576,7 +1780,7 @@ CMD ["uvicorn", "main:app",
         <input id="audit-filter-action" placeholder="Filter by action…" style="width:180px;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
         <input id="audit-filter-actor" placeholder="Filter by actor…" style="width:160px;padding:8px 12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px">
         <button class="btn btn-sm" onclick="loadAuditLog()" style="font-size:12px">🔍 Search</button>
-        <button class="btn btn-sm" onclick="verifyAuditChain()" style="font-size:12px;background:rgba(99,102,241,.15);color:#818cf8;border-color:#818cf8">🔗 Verify Chain</button>
+        <button class="btn btn-sm" onclick="verifyAuditChain()" style="font-size:12px;background:rgba(99,102,241,.15);color:#3b82f6;border-color:#3b82f6">🔗 Verify Chain</button>
         <button class="btn btn-sm" onclick="exportAuditLog()" style="font-size:12px">📥 Export JSON</button>
         <span id="audit-chain-status" style="font-size:12px;font-weight:700;margin-left:4px"></span>
       </div>
@@ -1624,12 +1828,12 @@ CMD ["uvicorn", "main:app",
         <div class="form-group">
           <label class="form-label">AlienVault OTX API Key</label>
           <input id="ti-otx-key" type="password" placeholder="Paste OTX API key…">
-          <span class="form-hint">Register free at <a href="https://otx.alienvault.com" target="_blank" style="color:#818cf8">otx.alienvault.com</a></span>
+          <span class="form-hint">Register free at <a href="https://otx.alienvault.com" target="_blank" style="color:#3b82f6">otx.alienvault.com</a></span>
         </div>
         <div class="form-group">
           <label class="form-label">PhishTank API Key</label>
           <input id="ti-phishtank-key" type="password" placeholder="Paste PhishTank API key…">
-          <span class="form-hint">Register free at <a href="https://www.phishtank.com/api_register.php" target="_blank" style="color:#818cf8">phishtank.com</a></span>
+          <span class="form-hint">Register free at <a href="https://www.phishtank.com/api_register.php" target="_blank" style="color:#3b82f6">phishtank.com</a></span>
         </div>
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">OpenAI API Key (for AI template generation)</label>
@@ -1639,7 +1843,7 @@ CMD ["uvicorn", "main:app",
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" onclick="saveThreatIntelConfig()">💾 Save Config</button>
-        <button class="btn" onclick="navigate('threat')" style="background:rgba(99,102,241,.15);color:#818cf8;border-color:#818cf8">🌐 View Threat Intel Dashboard</button>
+        <button class="btn" onclick="navigate('threat')" style="background:rgba(99,102,241,.15);color:#3b82f6;border-color:#3b82f6">🌐 View Threat Intel Dashboard</button>
         <span id="ti-save-msg" style="align-self:center;font-size:13px;color:#4ade80;display:none">Saved!</span>
       </div>
     </div>
@@ -1650,7 +1854,7 @@ CMD ["uvicorn", "main:app",
     <div class="card">
       <div class="section-sep">📬 REPORT-PHISHING MAILBOX INTEGRATION</div>
       <p style="color:var(--muted);font-size:13px;margin-bottom:18px">
-        Automatically capture employee phishing reports from a dedicated mailbox (e.g. <code style="color:#818cf8">report-phishing@company.com</code>).
+        Automatically capture employee phishing reports from a dedicated mailbox (e.g. <code style="color:#3b82f6">report-phishing@company.com</code>).
         PhishSim polls the inbox every few minutes and fires a <em>Reported</em> event for any email matched to an active campaign.
         Supports standard IMAP and Microsoft Graph API (Exchange Online / M365).
       </p>
@@ -1776,7 +1980,7 @@ CMD ["uvicorn", "main:app",
       </div>
 
       <!-- Status row -->
-      <div id="mb-status-row" style="display:none;margin-top:14px;padding:10px 14px;background:#0f1117;border-radius:8px;font-size:12px;color:var(--muted)"></div>
+      <div id="mb-status-row" style="display:none;margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:12px;color:var(--muted)"></div>
     </div>
   </div><!-- end stab-pane-mailbox -->
 
@@ -1793,7 +1997,7 @@ CMD ["uvicorn", "main:app",
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="manualThreatSync()" style="font-size:12px">🔄 Sync Now</button>
-      <button class="btn btn-sm" onclick="generateIntelTemplate()" style="font-size:12px;background:rgba(99,102,241,.15);color:#818cf8;border-color:#818cf8">🧠 Generate Template</button>
+      <button class="btn btn-sm" onclick="generateIntelTemplate()" style="font-size:12px;background:rgba(99,102,241,.15);color:#3b82f6;border-color:#3b82f6">🧠 Generate Template</button>
       <button class="btn btn-sm" onclick="navigate('settings');showSettingsTab('threat-intel')" style="font-size:12px">⚙️ Configure</button>
     </div>
   </div>
@@ -1956,7 +2160,7 @@ CMD ["uvicorn", "main:app",
     </div>
     <div class="actions-row">
       <button class="btn btn-secondary" onclick="openImportModal()">📥 Import Template</button>
-      <button class="btn btn-secondary" style="background:rgba(99,102,241,.15);color:#818cf8;border:1px solid rgba(99,102,241,.3)" onclick="openGenerateModal()">🤖 Generate with AI</button>
+      <button class="btn btn-secondary" style="background:rgba(99,102,241,.15);color:#3b82f6;border:1px solid rgba(99,102,241,.3)" onclick="openGenerateModal()">🤖 Generate with AI</button>
       <button class="btn btn-primary" onclick="navigate('template-form')">+ New Template</button>
     </div>
   </div>
@@ -2016,6 +2220,8 @@ CMD ["uvicorn", "main:app",
 </div>
 
 </main>
+</div><!-- /.app-shell -->
+
 
 <!-- ═══ MODAL: EDIT CAMPAIGN ════════════════════════════════ -->
 <div id="modal-edit" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal('modal-edit')">
@@ -2074,7 +2280,7 @@ CMD ["uvicorn", "main:app",
         <span class="form-hint">Leave blank to run until manually completed.</span>
       </div>
     </div>
-    <div id="sch-preview" style="background:#0f1117;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--sub);display:none"></div>
+    <div id="sch-preview" style="background:#f8fafc;border-radius:8px;padding:12px 14px;font-size:12px;color:var(--sub);display:none"></div>
     <div id="sch-error" class="error-box" style="display:none;margin-top:8px"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-schedule')">Cancel</button>
@@ -2128,7 +2334,7 @@ CMD ["uvicorn", "main:app",
       </div>
     </div>
 
-    <div id="gen-loading" style="display:none;text-align:center;padding:20px;color:#818cf8">
+    <div id="gen-loading" style="display:none;text-align:center;padding:20px;color:#3b82f6">
       <div><span class="spinner"></span> Generating template… this may take 10–30 seconds</div>
     </div>
     <div id="gen-error" class="error-box" style="display:none;margin-bottom:12px"></div>
@@ -2208,7 +2414,7 @@ CMD ["uvicorn", "main:app",
       <button class="btn btn-primary btn-sm" onclick="importFromFile()" id="imp-file-parse-btn">🔍 Parse File</button>
     </div>
 
-    <div id="imp-loading" style="display:none;text-align:center;padding:16px;color:#818cf8">
+    <div id="imp-loading" style="display:none;text-align:center;padding:16px;color:#3b82f6">
       <span class="spinner"></span> Parsing…
     </div>
     <div id="imp-error" class="error-box" style="display:none;margin-top:12px"></div>
@@ -6532,5 +6738,9 @@ async function loadMailboxPollLog() {
   } catch(e) { console.warn('loadMailboxPollLog:', e); }
 }
 </script>
+</body>
+</html>
+
+
 </body>
 </html>
