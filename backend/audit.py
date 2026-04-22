@@ -53,12 +53,17 @@ def write(
     """
     Append a new record to the audit log.
     Automatically links to the previous record's hash.
-    Returns the new AuditLog record (not yet committed — caller must db.commit()).
+
+    BUG-04 fix: calls db.flush() after adding the entry so that the new
+    record is assigned a database ID and becomes visible to subsequent
+    hash-chain queries within the same transaction.  The caller is still
+    responsible for the final db.commit() (which persists the entry
+    together with any related model changes in the same transaction).
     """
     now = datetime.utcnow()
     details_str = json.dumps(details or {}, default=str)
 
-    # Get hash of the last record
+    # Get hash of the last committed record (flush makes any pending entry visible)
     last = db.query(models.AuditLog).order_by(
         models.AuditLog.id.desc()
     ).first()
@@ -78,6 +83,7 @@ def write(
         prev_hash   = prev_hash,
     )
     db.add(entry)
+    db.flush()   # BUG-04 fix: assign DB ID and make visible within this session
     return entry
 
 

@@ -83,6 +83,9 @@ def _migrate_db():
         # Template difficulty (Phase 3)
         "ALTER TABLE email_templates ADD COLUMN difficulty INTEGER DEFAULT 2",
         # Phase 3-5 tables are created by SQLAlchemy Base.metadata.create_all()
+        # INT-04 fix: unique constraint to enforce one event per target per type
+        # (prevents duplicate tracking events from race conditions / retries)
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_tracking_target_type ON tracking_events (target_id, event_type)",
         # Mailbox integration (safety-net column additions)
         "ALTER TABLE mailbox_config ADD COLUMN display_name VARCHAR DEFAULT 'Report Phishing Mailbox'",
         "ALTER TABLE mailbox_config ADD COLUMN imap_folder VARCHAR DEFAULT 'INBOX'",
@@ -320,13 +323,51 @@ try:
             result = run_mailbox_poll(db)
             if result.get("emails_matched", 0) > 0:
                 log.info(f"Mailbox poll: matched {result['emails_matched']} report(s)")
+
+            # ARC-06 fix: dynamically reschedule the job if poll_interval_minutes
+            # has changed since the scheduler was last configured.
+            cfg = db.query(models.MailboxConfig).first()
+            if cfg and cfg.poll_interval_minutes:
+                job = scheduler.get_job("mailbox_poll")
+                if job:
+                    current_interval = getattr(
+                        job.trigger, "interval", None
+                    )
+                    desired_seconds = cfg.poll_interval_minutes * 60
+                    if current_interval is None or int(current_interval.total_seconds()) != desired_seconds:
+                        scheduler.reschedule_job(
+                            "mailbox_poll",
+                            trigger="interval",
+                            minutes=cfg.poll_interval_minutes,
+                        )
+                        log.info(f"Mailbox poll interval updated to {cfg.poll_interval_minutes} min")
         except Exception as e:
             log.error(f"Mailbox poll job error: {e}")
         finally:
             db.close()
 
-    # Initial interval: 5 minutes — MailboxConfig.poll_interval_minutes can override this at runtime
+    # Initial interval: 5 minutes — MailboxConfig.poll_interval_minutes is checked
+    # at the end of each run and the job is dynamically rescheduled if needed (ARC-06 fix).
     scheduler.add_job(_mailbox_poll_job, trigger="interval", minutes=5, id="mailbox_poll")
+
+    # ── INT-02: Expired risk signal cleanup job ───────────────────────────────
+    def _expired_signal_cleanup_job():
+        """Delete RiskSignal rows whose expires_at has passed — runs daily."""
+        db = SessionLocal()
+        try:
+            deleted = db.query(models.RiskSignal).filter(
+                models.RiskSignal.expires_at != None,  # noqa: E711
+                models.RiskSignal.expires_at < datetime.utcnow(),
+            ).delete(synchronize_session=False)
+            db.commit()
+            if deleted:
+                log.info(f"Expired risk signal cleanup: removed {deleted} signal(s)")
+        except Exception as e:
+            log.error(f"Expired signal cleanup error: {e}")
+        finally:
+            db.close()
+
+    scheduler.add_job(_expired_signal_cleanup_job, trigger="interval", hours=24, id="expired_signal_cleanup")
 
     # Start syslog listener if gateway is configured for syslog
     def _maybe_start_syslog():
@@ -367,11 +408,14 @@ async def limit_request_size(request: Request, call_next):
         return JSONResponse(status_code=413, content={"detail": "Request body too large (max 10 MB)."})
     return await call_next(request)
 
-# ── CORS (CVE-11 fix) — set PHISHSIM_ORIGIN=https://yourdomain.com in production
-_allowed_origin = os.getenv("PHISHSIM_ORIGIN", "*")
+# ── CORS (CVE-11 fix / SEC-04 fix) — default to localhost in dev; set
+# PHISHSIM_ORIGIN=https://yourdomain.com in production. Wildcard is no
+# longer the default because it breaks allow_credentials in modern browsers
+# and opens the API to cross-site requests from any origin.
+_allowed_origin = os.getenv("PHISHSIM_ORIGIN", "http://localhost:8000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[_allowed_origin] if _allowed_origin != "*" else ["*"],
+    allow_origins=[_allowed_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

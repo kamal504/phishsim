@@ -296,8 +296,13 @@ def _calculate_awareness_score(campaign: dict, risk: dict, training: dict) -> in
     elif report_rate >= 5:  score += 8
 
     # Training completion (max 20 pts)
-    completion = training.get("completion_rate_pct", 0)
-    if completion >= 80:  score += 20
+    # ARC-04 fix: only award training points when there is actual evidence of
+    # training being delivered (i.e., at least one employee was enrolled).
+    # If no enrolment records exist for the period, this component scores 0
+    # rather than inflating the awareness score with phantom data.
+    enrolled   = training.get("enrolled", 0)
+    completion = training.get("completion_rate_pct", 0) if enrolled > 0 else 0
+    if completion >= 80:   score += 20
     elif completion >= 50: score += 12
     elif completion >= 20: score += 6
 

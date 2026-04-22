@@ -31,6 +31,104 @@ def set_scheduler(sched, fn_launch, fn_complete):
     _schedule_auto_launch = fn_launch
     _schedule_auto_complete = fn_complete
 
+
+def _resend_failed_job(campaign_id: int):
+    """
+    APScheduler job that calls the SMTP send endpoint for failed/undelivered
+    targets.  Called as a one-shot background job by the resend-failed endpoint.
+    BUG-01 fix: this replaces the broken asyncio.create_task() approach.
+    """
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        from routers.settings import send_campaign_emails, _get_config, _smtp_connect, _build_email_html, _effective_base_url
+        import time as _time
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from datetime import datetime as _dt
+
+        cfg = _get_config(db)
+        if not cfg.is_configured:
+            log.warning(f"Resend job: SMTP not configured, aborting for campaign {campaign_id}")
+            return
+
+        campaign = db.query(models.Campaign).filter(models.Campaign.id == campaign_id).first()
+        if not campaign:
+            return
+
+        targets = db.query(models.Target).filter(
+            models.Target.campaign_id == campaign_id,
+            models.Target.email_sent_at == None,  # noqa: E711
+        ).all()
+
+        if not targets:
+            log.info(f"Resend job: no eligible targets for campaign {campaign_id}")
+            return
+
+        base_url    = _effective_base_url(cfg)
+        send_delay  = float(getattr(cfg, "send_delay_seconds", 1.5))
+        max_per_min = int(getattr(cfg, "max_per_minute", 30))
+        sent_this_minute = 0
+        minute_start = _time.time()
+
+        try:
+            server = _smtp_connect(cfg)
+        except Exception as e:
+            log.error(f"Resend job: SMTP connect failed: {e}")
+            return
+
+        try:
+            for target in targets:
+                now_t = _time.time()
+                if now_t - minute_start >= 60:
+                    sent_this_minute = 0
+                    minute_start = now_t
+                if sent_this_minute >= max_per_min:
+                    sleep_for = 60 - (now_t - minute_start)
+                    if sleep_for > 0:
+                        _time.sleep(sleep_for)
+                    sent_this_minute = 0
+                    minute_start = _time.time()
+
+                try:
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"]  = campaign.subject
+                    msg["From"]     = f"{campaign.from_name} <{campaign.from_email}>"
+                    msg["To"]       = target.email
+                    msg["X-Mailer"] = "PhishSim/2.1"
+                    msg.attach(MIMEText(_build_email_html(campaign, target, base_url), "html"))
+
+                    # BUG-05 fix: set email_sent_at BEFORE calling sendmail so
+                    # a crash after send cannot leave the target in a retryable state.
+                    target.email_sent_at = _dt.utcnow()
+                    target.send_failed   = False
+                    target.send_error    = ""
+                    db.flush()
+
+                    server.sendmail(cfg.from_email, target.email, msg.as_string())
+                    sent_this_minute += 1
+                    db.commit()
+
+                    if send_delay > 0:
+                        _time.sleep(send_delay)
+                except Exception as e:
+                    target.send_failed = True
+                    target.send_error  = str(e)[:250]
+                    target.email_sent_at = None
+                    db.commit()
+                    log.warning(f"Resend job: failed to send to target {target.id}: {e}")
+        finally:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+        log.info(f"Resend job complete for campaign {campaign_id}")
+    except Exception as e:
+        log.error(f"Resend job error for campaign {campaign_id}: {e}")
+    finally:
+        db.close()
+
 # ── Email validator (CVE-12 fix) ──────────────────────────────
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
@@ -1124,16 +1222,27 @@ def resend_failed_targets(
         t.send_error   = ""
     db.commit()
 
-    # Import and trigger send — runs in background via the existing settings send function
-    try:
-        import asyncio
-        from routers.settings import send_campaign_emails
-        # Fire async task in the background
-        loop = asyncio.get_event_loop()
-        loop.create_task(send_campaign_emails(campaign_id, retry_failed=True, db_session=None))
-    except Exception:
-        # Fallback: mark for deferred processing
-        pass
+    # BUG-01 fix: use APScheduler one-shot job instead of asyncio.create_task()
+    # (asyncio.get_event_loop().create_task() does not work in a synchronous
+    # FastAPI endpoint — the task is created but never actually runs.)
+    # APScheduler is already running in main.py; we schedule a one-shot job
+    # that fires immediately to re-send to the eligible targets.
+    if _scheduler:
+        from datetime import datetime as _dt
+        _scheduler.add_job(
+            _resend_failed_job,
+            trigger="date",
+            run_date=_dt.utcnow(),
+            args=[campaign_id],
+            id=f"resend_{campaign_id}",
+            replace_existing=True,
+        )
+    else:
+        # Fallback when scheduler is not available: run synchronously (blocks request)
+        try:
+            _resend_failed_job(campaign_id)
+        except Exception as sync_err:
+            log.warning(f"Synchronous resend failed for campaign {campaign_id}: {sync_err}")
 
     audit_module.write(
         db, "campaign.resend_failed", actor=user.username,

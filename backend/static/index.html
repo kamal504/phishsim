@@ -2347,6 +2347,15 @@ function showToast(msg, type) {
    NAVIGATION
 ──────────────────────────────────────────────────────────── */
 function navigate(page, campaignId) {
+  // FE-06 fix: stop the progress auto-refresh timer when navigating away from
+  // the detail page.  Without this the setInterval keeps firing indefinitely,
+  // making API calls for whichever campaignId was last loaded even after the
+  // user has moved to a different section.
+  if (_progressAutoRefresh && page !== 'detail') {
+    clearInterval(_progressAutoRefresh);
+    _progressAutoRefresh = null;
+  }
+
   // Hide all pages
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   // Reset nav highlights
@@ -6351,12 +6360,34 @@ async function markReportedBulk(targetId) {
    DELIVERY STATUS EXPORT + RESEND UNDELIVERED
 ═══════════════════════════════════════════════════════════════ */
 
-function exportDeliveryStatus(cid) {
-  var a = document.createElement('a');
-  a.href = '/api/campaigns/' + cid + '/export/delivery';
-  a.download = '';
-  a.click();
-  showToast('Downloading delivery status export…', 'green');
+async function exportDeliveryStatus(cid) {
+  // FE-02 fix: use fetch() with the auth token instead of a plain <a href> tag.
+  // A plain anchor bypasses the Authorization header, causing a 401 because the
+  // endpoint requires authentication.  fetch() sends the token and triggers a
+  // browser download from the blob response.
+  try {
+    showToast('Preparing delivery export…', 'green');
+    const token = sessionStorage.getItem('token');
+    const headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch('/api/campaigns/' + cid + '/export/delivery', { headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'HTTP ' + res.status);
+    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    const cd = res.headers.get('Content-Disposition') || '';
+    const fn = (cd.match(/filename="?([^";\n]+)"?/) || [])[1] || ('DeliveryStatus_' + cid + '.xlsx');
+    a.download = fn;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Delivery export downloaded!', 'green');
+  } catch (e) {
+    showToast('Export failed: ' + e.message, 'red');
+  }
 }
 
 async function resendFailed(cid) {

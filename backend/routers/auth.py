@@ -128,7 +128,13 @@ def require_auth(
         .filter(models.UserSession.token == token)
         .first()
     )
-    if not session or session.expires_at < datetime.utcnow():
+    if not session:
+        raise HTTPException(status_code=401, detail="Session not found. Please log in again.")
+    if session.expires_at < datetime.utcnow():
+        # SEC-02 fix: eagerly delete the expired session so it is not returned
+        # by subsequent queries before the hourly cleanup job runs.
+        db.delete(session)
+        db.commit()
         raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
     if not session.user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled.")

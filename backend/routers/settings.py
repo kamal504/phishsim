@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from routers.auth import require_auth, require_operator, require_admin
 import audit as audit_module
+import encryption
 import models
 import schemas
 
@@ -74,13 +75,15 @@ def _check_ssrf(host: str):
 def _smtp_connect(cfg: models.SMTPConfig):
     """Open an authenticated SMTP connection. Caller must close it."""
     _check_ssrf(cfg.host)
+    # SEC-01 fix: decrypt the SMTP password before use (it may be stored encrypted)
+    plaintext_pw = encryption.decrypt(cfg.password) if cfg.password else ""
     context = ssl.create_default_context()
     server = smtplib.SMTP(cfg.host, cfg.port, timeout=15)
     server.ehlo()
     if cfg.use_tls:
         server.starttls(context=context)
         server.ehlo()
-    server.login(cfg.username, cfg.password)
+    server.login(cfg.username, plaintext_pw)
     return server
 
 
@@ -210,9 +213,12 @@ def save_smtp_config(data: schemas.SMTPConfigUpdate, user: models.User = Depends
     cfg.base_url   = (data.base_url or "http://localhost:8000").rstrip("/")
     cfg.updated_at = datetime.utcnow()
 
-    # Only overwrite password if a real new value was submitted
+    # Only overwrite password if a real new value was submitted.
+    # SEC-01 fix: encrypt the SMTP password at rest using Fernet (if encryption key
+    # is configured).  The encrypt() function is idempotent — already-encrypted
+    # values (prefixed with "enc:") are not double-encrypted.
     if data.password and data.password != MASK:
-        cfg.password = data.password
+        cfg.password = encryption.encrypt(data.password)
 
     cfg.is_configured = bool(
         cfg.host and cfg.username and cfg.password and cfg.from_email
@@ -373,14 +379,21 @@ def send_campaign_emails(
                 html_body = _build_email_html(campaign, target, base_url)
                 msg.attach(MIMEText(html_body, "html"))
 
-                server.sendmail(cfg.from_email, target.email, msg.as_string())
-                sent.append(target.email)
-                sent_this_minute += 1
-
+                # BUG-05 fix: mark email_sent_at BEFORE calling sendmail.
+                # If sendmail succeeds but the subsequent db.commit() fails,
+                # the target would otherwise have no email_sent_at and would be
+                # retried, resulting in a duplicate email.  Flushing the timestamp
+                # first ensures it is persisted (in the transaction) before the
+                # SMTP call; if the SMTP call fails, we roll back the flush.
                 now = datetime.utcnow()
                 target.email_sent_at = now
                 target.send_failed   = False
                 target.send_error    = ""
+                db.flush()
+
+                server.sendmail(cfg.from_email, target.email, msg.as_string())
+                sent.append(target.email)
+                sent_this_minute += 1
 
                 for et in ("sent", "delivered"):
                     existing = db.query(models.TrackingEvent).filter(
@@ -403,6 +416,10 @@ def send_campaign_emails(
             except Exception as e:
                 err_msg = str(e)[:250]
                 failed.append({"email": target.email, "error": err_msg})
+                # BUG-05 fix continued: undo the pre-flush email_sent_at if
+                # sendmail raised (the flush is still in-transaction, so we can
+                # safely overwrite the value before committing).
+                target.email_sent_at = None
                 target.send_failed = True
                 target.send_error  = err_msg
                 db.commit()
