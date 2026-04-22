@@ -13,10 +13,15 @@
     /* Content area — light theme */
     --bg: #f1f5f9;
     --card: #ffffff;
+    --surface: #f8fafc;        /* subtle off-white for inset boxes / alt card rows */
     --border: #e2e8f0;
     --text: #0f172a;
     --muted: #64748b;
+    --muted-label: #64748b;    /* alias for --muted used in some components */
     --sub: #94a3b8;
+    --input-bg: #ffffff;       /* form input background */
+    --danger: #ef4444;         /* alias for --red */
+    --sidebar: #0f172a;        /* alias for --sidebar-bg */
     /* Accent palette */
     --primary: #3b82f6;
     --purple: #3b82f6;
@@ -284,6 +289,15 @@
   code{font-family:monospace;color:var(--primary);background:rgba(59,130,246,.07);padding:1px 5px;border-radius:4px}
   .loading{color:var(--muted);text-align:center;padding:40px}
   .section-sep{margin:4px 0 14px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+
+  /* CARD HEADER ──────────────────────────────────────────── */
+  .card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .card-header .card-title{margin-bottom:0}
+
+  /* FORM CONTROL (Bootstrap-compat alias for inputs) ─────── */
+  .form-control{background:var(--input-bg);border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;outline:none;width:100%;transition:border-color .15s,box-shadow .15s}
+  .form-control:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(59,130,246,.1)}
+  .form-control::placeholder{color:#94a3b8}
 
   /* SETTINGS ─────────────────────────────────────────── */
   .smtp-status{display:inline-flex;align-items:center;gap:7px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600}
@@ -5473,7 +5487,7 @@ async function loadThreatIntelDashboard() {
       + '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:4px">Active IOCs</div>'
       + '</div>'
       + '<div style="background:var(--surface);border-radius:10px;padding:14px 16px;border:1px solid var(--border);text-align:center">'
-      + '<div style="font-size:28px;font-weight:800;color:#e2e8f0">' + (d.total||0).toLocaleString() + '</div>'
+      + '<div style="font-size:28px;font-weight:800;color:var(--text)">' + (d.total||0).toLocaleString() + '</div>'
       + '<div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-top:4px">Total IOCs</div>'
       + '</div>'
       + feedHtml
@@ -6738,9 +6752,5 @@ async function loadMailboxPollLog() {
   } catch(e) { console.warn('loadMailboxPollLog:', e); }
 }
 </script>
-</body>
-</html>
-
-
 </body>
 </html>
