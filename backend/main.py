@@ -14,7 +14,6 @@ from routers import risk as risk_router
 from routers import approvals as approvals_router
 from routers import threat_intel as threat_intel_router
 from routers import autonomy as autonomy_router
-from routers import compliance as compliance_router
 from routers import mailbox as mailbox_router
 
 # ── Structured logging (CVE-16 fix) ──────────────────────────────────────────
@@ -433,7 +432,6 @@ app.include_router(risk_router.router)
 app.include_router(approvals_router.router)
 app.include_router(threat_intel_router.router)
 app.include_router(autonomy_router.router)
-app.include_router(compliance_router.router)
 app.include_router(mailbox_router.router)
 
 # ── Health ────────────────────────────────────────────────────────────────────

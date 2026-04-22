@@ -596,28 +596,6 @@ class CampaignProposal(Base):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# COMPLIANCE REPORTS
-# ═════════════════════════════════════════════════════════════════════════════
-
-class ComplianceReport(Base):
-    """
-    Generated compliance report snapshots (PDF/JSON) for audit purposes.
-    Framework types: iso27001 | nist_csf | soc2 | gdpr | custom
-    """
-    __tablename__ = "compliance_reports"
-
-    id              = Column(Integer, primary_key=True)
-    framework       = Column(String, nullable=False)   # iso27001 | nist_csf | soc2 | gdpr
-    period_start    = Column(DateTime, nullable=False)
-    period_end      = Column(DateTime, nullable=False)
-    generated_at    = Column(DateTime, default=datetime.utcnow)
-    generated_by    = Column(String, default="system")
-    summary         = Column(Text, default="{}")       # JSON summary stats
-    file_path       = Column(String, default="")       # path to generated PDF
-    status          = Column(String, default="generating")  # generating | ready | error
-
-
-# ═════════════════════════════════════════════════════════════════════════════
 # TRAINING ENROLMENTS
 # Tracks which employees have been enrolled in which training modules,
 # either by the autonomy engine (auto-enrol) or manually by an operator.
