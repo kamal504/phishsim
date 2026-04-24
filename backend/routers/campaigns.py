@@ -192,13 +192,14 @@ def create_campaign(payload: schemas.CampaignCreate, _: models.User = Depends(re
         _schedule_auto_launch(campaign.id, campaign.scheduled_at)
         # Fire scheduling notification immediately when campaign is scheduled
         try:
-            notifications.dispatch(
-                "campaign.launched",
-                title=f"Campaign Scheduled: {campaign.name}",
-                body=(f"Campaign '{campaign.name}' has been scheduled to launch at "
-                      f"{campaign.scheduled_at.strftime('%Y-%m-%d %H:%M UTC')}. "
-                      f"Targets will receive phishing emails at that time."),
+            notifications.send(
                 db=db,
+                event_type="campaign.launched",
+                title=f"Campaign Scheduled: {campaign.name}",
+                message=(f"Campaign '{campaign.name}' has been scheduled to launch at "
+                         f"{campaign.scheduled_at.strftime('%Y-%m-%d %H:%M UTC')}. "
+                         f"Targets will receive phishing emails at that time."),
+                severity="info",
             )
         except Exception as _ne:
             log.warning(f"Scheduling notification failed (non-critical): {_ne}")

@@ -928,10 +928,10 @@ def _build_js_redirect_page(confirm_url: str) -> str:
       if (d.redirect) window.location.href = d.redirect;
     }})
     .catch(function(){{
-      // Fallback: navigate directly even if POST fails
-      window.location.href = '{confirm_url}'.replace('/confirm/', '/land/');
+      // Fallback: navigate to fake login page if POST fails
+      window.location.href = '{confirm_url}'.replace('/track/confirm/', '/track/land/');
     }});
-  }}, 1500);
+  }}, 400);
 }})();
 </script>
 </body>
@@ -967,13 +967,11 @@ async def track_confirm(token: str, request: Request, db: Session = Depends(get_
     if _is_bot(request):
         return {"redirect": "/"}
 
-    # Extra headless check from JS report
-    if not body.get("human", True):
-        return {"redirect": "/"}
-
+    # Log human flag in extra_data for analytics but never block a real user
+    # (mobile users often have human=false because touchstart fires after the timer)
     target = _log_event(db, token, "clicked", request, extra=body)
     if not target:
-        return {"redirect": "/"}
+        return {"redirect": f"/track/land/{token}"}
 
     # Fire simulation_click risk signal
     _fire_simulation_signal(target, "simulation_click", db)
@@ -1039,6 +1037,22 @@ async def track_submit(token: str, request: Request, db: Session = Depends(get_d
             check_and_award_badges(target.email, db)
         except Exception as _e:
             pass
+
+        # ── Notify admin that someone submitted credentials ───────────────────
+        try:
+            import notifications as _notif
+            _notif.send(
+                db=db,
+                event_type="risk.critical_employee",
+                title=f"⚠️ Credentials Submitted — {campaign.name if campaign else 'Simulation'}",
+                message=(f"{target.name or target.email} ({target.department or 'Unknown dept'}) "
+                         f"submitted credentials on the fake login page. "
+                         f"Campaign: {campaign.name if campaign else 'Unknown'}. "
+                         f"Awareness email sent to target immediately."),
+                severity="critical",
+            )
+        except Exception as _ne:
+            log.warning(f"Admin submission notification failed (non-critical): {_ne}")
 
         # ── Send "You've been phished" awareness email to the target ──────────
         try:
