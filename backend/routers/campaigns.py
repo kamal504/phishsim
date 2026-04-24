@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 import audit as audit_module
 import encryption
+import notifications
 import models, schemas
 from routers.auth import require_auth, require_operator, require_admin
 
@@ -189,6 +190,18 @@ def create_campaign(payload: schemas.CampaignCreate, _: models.User = Depends(re
 
     if campaign.status == "scheduled" and campaign.scheduled_at and _schedule_auto_launch:
         _schedule_auto_launch(campaign.id, campaign.scheduled_at)
+        # Fire scheduling notification immediately when campaign is scheduled
+        try:
+            notifications.dispatch(
+                "campaign.launched",
+                title=f"Campaign Scheduled: {campaign.name}",
+                body=(f"Campaign '{campaign.name}' has been scheduled to launch at "
+                      f"{campaign.scheduled_at.strftime('%Y-%m-%d %H:%M UTC')}. "
+                      f"Targets will receive phishing emails at that time."),
+                db=db,
+            )
+        except Exception as _ne:
+            log.warning(f"Scheduling notification failed (non-critical): {_ne}")
     if campaign.auto_complete_at and campaign.status == "active" and _schedule_auto_complete:
         _schedule_auto_complete(campaign.id, campaign.auto_complete_at)
 
@@ -863,11 +876,6 @@ def export_campaign(campaign_id: int, _: models.User = Depends(require_auth), db
     for col, w in enumerate([22, 10, 10, 10, 10, 12, 12, 12, 12], 1):
         ws3.column_dimensions[get_column_letter(col)].width = w
 
-    # ── Sheet 4: Raw Event Log ────────────────────────────────
-    ws4 = wb.create_sheet("Event Log")
-    _hrow(ws4, 1, ["Timestamp (UTC)", "Target Name", "Target Email", "Department", "Event", "IP Address", "User Agent"])
-    ws4.row_dimensions[1].height = 22
-
     # Build target lookup
     target_map = {t.id: t for t in targets}
     event_colors = {
@@ -878,6 +886,12 @@ def export_campaign(campaign_id: int, _: models.User = Depends(require_auth), db
         "submitted": PatternFill("solid", fgColor="FEE2E2"),
         "reported":  PatternFill("solid", fgColor="DCFCE7"),
     }
+
+    # ── Sheet 4: Raw Event Log ────────────────────────────────
+    ws4 = wb.create_sheet("Event Log")
+    _hrow(ws4, 1, ["Timestamp (UTC)", "Target Name", "Target Email", "Department", "Event", "IP Address", "User Agent"])
+    ws4.row_dimensions[1].height = 22
+
     for i, ev in enumerate(events, 2):
         t = target_map.get(ev.target_id)
         fill = event_colors.get(ev.event_type)
@@ -896,6 +910,73 @@ def export_campaign(campaign_id: int, _: models.User = Depends(require_auth), db
     col_widths4 = [20, 20, 28, 18, 12, 18, 60]
     for col, w in enumerate(col_widths4, 1):
         ws4.column_dimensions[get_column_letter(col)].width = w
+
+    # ── Sheet 5: Debug / False Positive Analysis ─────────────
+    import json as _json
+    import re as _re
+
+    # Known security scanner UA patterns (for flagging)
+    _SCANNER_RE = _re.compile(
+        r"(bot|crawler|spider|scanner|preview|prefetch|safelinks|proofpoint|"
+        r"mimecast|barracuda|symantec|forcepoint|sophos|trend.*micro|cisco|"
+        r"fireeye|headless|phantomjs|selenium|puppeteer|playwright|"
+        r"python-requests|python-urllib|curl|wget|java\/|go-http-client|"
+        r"microsoft.*safety|defender|okhttp)",
+        _re.IGNORECASE,
+    )
+
+    ws5 = wb.create_sheet("Debug - False Positive Analysis")
+    ws5.row_dimensions[1].height = 22
+    _hrow(ws5, 1, [
+        "Timestamp (UTC)", "Email", "Event", "IP Address",
+        "User Agent (full)", "Platform", "Screen", "Language",
+        "Timezone", "Human Flag", "Bot Detected", "Notes"
+    ])
+
+    orange_fill = PatternFill("solid", fgColor="FFF7ED")
+    for i, ev in enumerate(events, 2):
+        t = target_map.get(ev.target_id)
+        ts = str(ev.timestamp)[:19] if ev.timestamp else ""
+        ua = ev.user_agent or ""
+
+        # Parse extra_data JSON (screen, platform, lang, tz, human flag)
+        try:
+            extra = _json.loads(ev.extra_data or "{}")
+        except Exception:
+            extra = {}
+
+        platform   = extra.get("platform", "—")
+        screen     = (f"{extra['screen_w']}x{extra['screen_h']}"
+                      if "screen_w" in extra else "—")
+        lang       = extra.get("lang", "—")
+        tz         = extra.get("tz", "—")
+        human_flag = str(extra.get("human", "—"))
+        bot_flag   = "YES ⚠️" if _SCANNER_RE.search(ua) or not ua else "No"
+
+        # Compose notes for known scanners
+        notes = ""
+        if not ua:
+            notes = "No User-Agent — likely automated scanner"
+        elif _SCANNER_RE.search(ua):
+            notes = "Known security scanner UA — likely false positive"
+        elif human_flag == "False":
+            notes = "JS reported no human interaction — possible bot"
+
+        fill = orange_fill if bot_flag.startswith("YES") else event_colors.get(ev.event_type)
+        _drow(ws5, i, [
+            ts,
+            t.email if t else "—",
+            ev.event_type.upper(),
+            ev.ip_address or "—",
+            ua[:200],
+            platform, screen, lang, tz,
+            human_flag, bot_flag, notes
+        ], fill=fill)
+        ws5.row_dimensions[i].height = 16
+
+    col_widths5 = [20, 28, 12, 18, 60, 16, 12, 12, 24, 12, 14, 40]
+    for col, w in enumerate(col_widths5, 1):
+        ws5.column_dimensions[get_column_letter(col)].width = w
 
     # Stream back as Excel file
     buf = io.BytesIO()

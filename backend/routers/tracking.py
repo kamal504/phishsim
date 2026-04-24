@@ -1040,6 +1040,68 @@ async def track_submit(token: str, request: Request, db: Session = Depends(get_d
         except Exception as _e:
             pass
 
+        # ── Send "You've been phished" awareness email to the target ──────────
+        try:
+            import smtplib, ssl as _ssl, encryption as _enc
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            smtp_cfg = db.query(models.SMTPConfig).first()
+            if smtp_cfg and smtp_cfg.host and smtp_cfg.username:
+                campaign_name = campaign.name if campaign else "Security Awareness Simulation"
+                target_name   = target.name or target.email.split("@")[0]
+                html_body = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f1f5f9">
+<div style="max-width:600px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1)">
+  <div style="background:#dc2626;padding:36px 40px;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">🚨</div>
+    <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800">You've Been Phished!</h1>
+    <p style="color:#fca5a5;margin:10px 0 0;font-size:14px">This was a controlled security awareness simulation</p>
+  </div>
+  <div style="padding:32px 40px">
+    <p style="font-size:15px;color:#1e293b;margin:0 0 16px">Hi <strong>{target_name}</strong>,</p>
+    <p style="font-size:14px;color:#475569;line-height:1.7;margin:0 0 16px">
+      You recently clicked a link and entered your credentials as part of the
+      <strong style="color:#1e293b">{campaign_name}</strong> phishing simulation exercise
+      run by your IT Security team.
+    </p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin:0 0 24px">
+      <p style="margin:0;font-size:14px;color:#991b1b;font-weight:600">⚠️ No real harm has been done.</p>
+      <p style="margin:8px 0 0;font-size:13px;color:#7f1d1d;line-height:1.6">
+        Your credentials were <strong>not captured or stored</strong>. This was a safe, controlled test.
+      </p>
+    </div>
+    <h3 style="font-size:14px;color:#1e293b;margin:0 0 12px">🛡️ What to do next time:</h3>
+    <ul style="margin:0 0 24px;padding-left:20px;color:#475569;font-size:13px;line-height:2">
+      <li>Check the sender's email address carefully before clicking any link</li>
+      <li>Hover over links to preview the actual URL before clicking</li>
+      <li>Never enter credentials on a page you reached via an email link</li>
+      <li>When in doubt, contact IT Security directly to verify</li>
+      <li>Report suspicious emails using the "Report Phishing" button</li>
+    </ul>
+    <p style="font-size:13px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:16px;margin:0">
+      This email was sent automatically as part of your organisation's security awareness programme.
+      Contact your IT Security team if you have questions.
+    </p>
+  </div>
+</div>
+</body></html>"""
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = "⚠️ Security Alert: You were caught in a phishing simulation"
+                msg["From"]    = f"{smtp_cfg.from_name or 'IT Security'} <{smtp_cfg.from_email or smtp_cfg.username}>"
+                msg["To"]      = target.email
+                msg.attach(MIMEText(html_body, "html"))
+                pw = _enc.decrypt(smtp_cfg.password) if smtp_cfg.password else ""
+                with smtplib.SMTP(smtp_cfg.host, smtp_cfg.port, timeout=15) as s:
+                    s.ehlo()
+                    if smtp_cfg.use_tls:
+                        s.starttls(context=_ssl.create_default_context())
+                        s.ehlo()
+                    s.login(smtp_cfg.username, pw)
+                    s.sendmail(msg["From"], [target.email], msg.as_string())
+        except Exception as _mail_err:
+            log.warning(f"Phished awareness email failed (non-critical): {_mail_err}")
+
         db.commit()
     return HTMLResponse(build_awareness_page(target, campaign, events))
 
