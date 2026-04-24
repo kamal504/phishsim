@@ -1256,8 +1256,8 @@ IT Security Team</textarea>
 
     <div class="form-group">
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;color:var(--sub)">
-        <input id="smtp-tls" type="checkbox" checked style="width:auto;accent-color:var(--purple)">
-        Use STARTTLS encryption (recommended — required for port 587)
+        <input id="smtp-tls" type="checkbox" style="width:auto;accent-color:var(--purple)">
+        Use STARTTLS encryption (required for port 587 — leave OFF for port 2525)
       </label>
     </div>
 
@@ -4241,7 +4241,7 @@ function clearSmtpConfig() {
     document.getElementById(id).value = '';
   });
   document.getElementById('smtp-port').value = 587;
-  document.getElementById('smtp-tls').checked = true;
+  document.getElementById('smtp-tls').checked = false;
   document.getElementById('smtp-test-result').style.display = 'none';
   apiFetch('PUT', '/settings/smtp', {
     host:'', port:587, username:'', password:' ', use_tls:true, from_name:'', from_email:''
